@@ -188,30 +188,6 @@ const GLOBAL_CSS = `
   }
   .r8-btn-secondary:hover { color: var(--text-1); }
 
-  /* Metrics */
-  .r8-metrics {
-    display: grid; grid-template-columns: repeat(4, 1fr);
-    border-top: 1px solid var(--border);
-    border-bottom: 1px solid var(--border);
-  }
-  .r8-metric {
-    padding: 24px 28px;
-    border-right: 1px solid var(--border);
-  }
-  .r8-metric:last-child { border-right: none; }
-  .r8-metric-label {
-    font-family: var(--font-mono); font-size: 10px;
-    color: var(--text-3); letter-spacing: .08em; margin-bottom: 8px;
-  }
-  .r8-metric-value {
-    font-family: var(--font-display); font-size: 28px; font-weight: 700;
-    color: var(--text-1); letter-spacing: -.02em; margin-bottom: 4px;
-    line-height: 1;
-  }
-  .r8-metric-delta { font-family: var(--font-mono); font-size: 10px; letter-spacing: .04em; }
-  .r8-d-pos { color: var(--accent); }
-  .r8-d-neg { color: #888; }
-
   /* Section */
   .r8-section { padding: 80px 0; }
   .r8-section-wrap { max-width: 1040px; margin: 0 auto; padding: 0 24px; }
@@ -421,7 +397,6 @@ const GLOBAL_CSS = `
     .r8-hero-right { display: none; }
     .r8-agents-grid { grid-template-columns: 1fr; }
     .r8-integrations-grid { grid-template-columns: repeat(4,1fr); }
-    .r8-metrics { grid-template-columns: repeat(2, 1fr); }
     .r8-final-card { flex-direction: column; }
     .r8-hero-title { font-size: 52px; }
     .r8-section-title { font-size: 32px; }
@@ -756,7 +731,6 @@ export default function Home() {
         </a>
         <div className="r8-nav-links">
           <a className="r8-nav-link" href="#agents">AGENT_ROSTER</a>
-          <a className="r8-nav-link" href="#metrics">TELEMETRY</a>
         </div>
       </nav>
 
@@ -824,30 +798,6 @@ export default function Home() {
               </div>
             </div>
           </div>
-        </div>
-      </div>
-
-      {/* ── METRICS ──────────────────────────────── */}
-      <div className="r8-metrics" id="metrics" style={{ maxWidth: '1040px', margin: '0 auto' }}>
-        <div className="r8-metric">
-          <div className="r8-metric-label">THROUGHPUT</div>
-          <div className="r8-metric-value">1.8M</div>
-          <div className={`r8-metric-delta r8-d-pos`}>+18.2% WEEK</div>
-        </div>
-        <div className="r8-metric">
-          <div className="r8-metric-label">LATENCY_AVG</div>
-          <div className="r8-metric-value">142ms</div>
-          <div className="r8-metric-delta r8-d-neg">−2.4% VS PREV</div>
-        </div>
-        <div className="r8-metric">
-          <div className="r8-metric-label">AGENT_UPTIME</div>
-          <div className="r8-metric-value">99.98%</div>
-          <div className="r8-metric-delta" style={{ color: '#888' }}>CERTIFIED_SLA_V3</div>
-        </div>
-        <div className="r8-metric">
-          <div className="r8-metric-label">COST_PER_RUN</div>
-          <div className="r8-metric-value">$0.02</div>
-          <div className="r8-metric-delta" style={{ color: '#888' }}>STATIC_FLAT_BILLING</div>
         </div>
       </div>
 
