@@ -1,0 +1,21 @@
+# Dependencies
+/node_modules
+
+# Next.js
+/.next/
+/out/
+
+# Environment
+.env*.local
+.env
+
+# Data (waitlist signups — back up separately or migrate to Convex)
+/data/
+
+# Misc
+.DS_Store
+*.pem
+npm-debug.log*
+
+# Vercel
+.vercel
