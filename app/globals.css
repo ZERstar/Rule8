@@ -1,37 +1,85 @@
 @import "tailwindcss";
 
-/* ── Design tokens ── */
 @theme {
-  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+  --color-bg: #0C0C0E;
+  --color-s1: #111114;
+  --color-s2: #16161A;
+  --color-s3: #1C1C21;
+  --color-b1: rgba(255,255,255,0.06);
+  --color-b2: rgba(255,255,255,0.10);
+  --color-b3: rgba(255,255,255,0.16);
+  --color-gold: #C8972A;
+  --color-gold-l: #E3B040;
+  --color-gold-a08: rgba(200,151,42,0.08);
+  --color-gold-a12: rgba(200,151,42,0.12);
+  --color-gold-a24: rgba(200,151,42,0.24);
+  --color-t1: #F0F0F2;
+  --color-t2: #9898A6;
+  --color-t3: #5A5A6A;
+  --color-green: #22C55E;
+  --color-teal: #34D399;
+  --color-blue: #60A5FA;
+  --color-purple: #A78BFA;
+  --color-amber: #D97706;
+  --color-red: #EF4444;
+  --font-sans: "Inter", sans-serif;
+  --font-mono: "JetBrains Mono", monospace;
 }
 
-/* ── Base reset ── */
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+@keyframes fadeSlide {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
 
-html { scroll-behavior: smooth; }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes pulse-gold {
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.3;
+  }
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  scroll-behavior: smooth;
+}
 
 body {
-  background: var(--bg);
-  color: var(--text-1);
-  font-family: var(--font-mono);
+  min-height: 100vh;
+  background: var(--color-bg);
+  color: var(--color-t1);
+  font-family: var(--font-sans);
   font-size: 13px;
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
   overflow-x: hidden;
 }
 
-/* ── Scrollbar ── */
-::-webkit-scrollbar        { width: 3px; }
-::-webkit-scrollbar-track  { background: transparent; }
-::-webkit-scrollbar-thumb  { background: rgba(255,255,255,0.10); }
-
-/* ── Keyframes ── */
-@keyframes pulse-ring {
-  0%, 100% { opacity: 0.8; }
-  50%       { opacity: 0.3; }
+::-webkit-scrollbar {
+  width: 3px;
 }
-@keyframes blink {
-  0%, 100% { opacity: 1; }
-  50%       { opacity: 0; }
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,0.10);
 }

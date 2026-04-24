@@ -1,0 +1,127 @@
+import { mutation, query } from "./_generated/server";
+import { v } from "convex/values";
+
+const LIVE_TRACE_TEMPLATES = [
+  {
+    agentTag: "executive",
+    crewTag: "executive",
+    crewName: "Executive",
+    action: "Re-prioritized founder escalations after cost spike alert",
+    stepType: "overseer_route",
+    status: "ok",
+    toolName: undefined,
+    toolOutputPreview: undefined,
+    model: "claude-sonnet-4-6",
+    tokensIn: 178,
+    tokensOut: 102,
+    costCents: 15,
+    latencyMs: 540,
+    cacheHit: true,
+    cacheTokens: 144,
+    confidence: 0.93,
+  },
+  {
+    agentTag: "finance",
+    crewTag: "finance",
+    crewName: "Finance Crew",
+    action: "Checked retry payment state before sending renewal recovery",
+    stepType: "tool_call",
+    status: "ok",
+    toolName: "stripe_lookup",
+    toolOutputPreview: "Subscription recovered for customer after second attempt",
+    model: "claude-sonnet-4-6",
+    tokensIn: 204,
+    tokensOut: 118,
+    costCents: 18,
+    latencyMs: 690,
+    cacheHit: false,
+    cacheTokens: 0,
+    confidence: 0.9,
+  },
+  {
+    agentTag: "support",
+    crewTag: "support",
+    crewName: "Support Crew",
+    action: "Drafted release-note answer for API key rotation question",
+    stepType: "llm_call",
+    status: "ok",
+    toolName: undefined,
+    toolOutputPreview: undefined,
+    model: "claude-sonnet-4-6",
+    tokensIn: 266,
+    tokensOut: 172,
+    costCents: 22,
+    latencyMs: 780,
+    cacheHit: true,
+    cacheTokens: 196,
+    confidence: 0.91,
+  },
+  {
+    agentTag: "community",
+    crewTag: "community",
+    crewName: "Community Crew",
+    action: "Posted moderation warning after repeat spam pattern match",
+    stepType: "resolution",
+    status: "warn",
+    toolName: "discord_dm",
+    toolOutputPreview: "Warning DM sent and thread hidden from public feed",
+    model: "claude-sonnet-4-6",
+    tokensIn: 146,
+    tokensOut: 84,
+    costCents: 12,
+    latencyMs: 460,
+    cacheHit: false,
+    cacheTokens: 0,
+    confidence: 0.79,
+  },
+] as const;
+
+export const listRecent = query({
+  args: {
+    workspaceId: v.string(),
+    limit: v.number(),
+  },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("traces")
+      .withIndex("by_workspace_and_created_at", (q) => q.eq("workspaceId", args.workspaceId))
+      .order("desc")
+      .take(args.limit);
+  },
+});
+
+export const insertDemo = mutation({
+  args: { workspaceId: v.string() },
+  handler: async (ctx, args) => {
+    const template =
+      LIVE_TRACE_TEMPLATES[Math.floor(Math.random() * LIVE_TRACE_TEMPLATES.length)];
+
+    const matchingAgent = await ctx.db
+      .query("agents")
+      .withIndex("by_workspace_and_crew_tag", (q) =>
+        q.eq("workspaceId", args.workspaceId).eq("crewTag", template.crewTag),
+      )
+      .first();
+
+    const traceId = await ctx.db.insert("traces", {
+      runId: `run-live-${Date.now()}`,
+      taskId: undefined,
+      agentId: matchingAgent?._id,
+      ...template,
+      workspaceId: args.workspaceId,
+      createdAt: Date.now(),
+    });
+
+    const traces = await ctx.db
+      .query("traces")
+      .withIndex("by_workspace_and_created_at", (q) => q.eq("workspaceId", args.workspaceId))
+      .order("desc")
+      .collect();
+
+    for (const trace of traces.slice(20)) {
+      await ctx.db.delete(trace._id);
+    }
+
+    return { traceId };
+  },
+});

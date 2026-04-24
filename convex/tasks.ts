@@ -1,0 +1,71 @@
+import { query } from "./_generated/server";
+import { v } from "convex/values";
+
+const ONE_DAY_MS = 1000 * 60 * 60 * 24;
+
+const crewTagValidator = v.union(
+  v.literal("executive"),
+  v.literal("finance"),
+  v.literal("support"),
+  v.literal("community"),
+);
+
+export const getCrewStats = query({
+  args: { workspaceId: v.string(), crewTag: crewTagValidator },
+  handler: async (ctx, args) => {
+    const tasks = await ctx.db
+      .query("tasks")
+      .withIndex("by_workspace_and_crew_tag", (q) =>
+        q.eq("workspaceId", args.workspaceId).eq("crewTag", args.crewTag),
+      )
+      .collect();
+
+    const cutoff = Date.now() - ONE_DAY_MS;
+    const recent = tasks.filter((t) => t.createdAt >= cutoff);
+
+    return {
+      tasksToday: recent.length,
+      costTodayCents: recent.reduce((sum, t) => sum + t.totalCostCents, 0),
+      activeWorkflows: recent.filter((t) => t.status === "running").length,
+    };
+  },
+});
+
+export const list = query({
+  args: { workspaceId: v.string() },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("tasks")
+      .withIndex("by_workspace_and_created_at", (q) => q.eq("workspaceId", args.workspaceId))
+      .order("desc")
+      .collect();
+  },
+});
+
+export const getStats = query({
+  args: { workspaceId: v.string() },
+  handler: async (ctx, args) => {
+    const [tasks, agents] = await Promise.all([
+      ctx.db
+        .query("tasks")
+        .withIndex("by_workspace_and_created_at", (q) => q.eq("workspaceId", args.workspaceId))
+        .collect(),
+      ctx.db
+        .query("agents")
+        .withIndex("by_workspace_and_chamber_id", (q) => q.eq("workspaceId", args.workspaceId))
+        .collect(),
+    ]);
+
+    const cutoff = Date.now() - ONE_DAY_MS;
+    const recentTasks = tasks.filter((task) => task.createdAt >= cutoff);
+
+    return {
+      agentsManaged: agents.length,
+      tasksToday: recentTasks.length,
+      autoResolved: recentTasks.filter((task) => task.autoResolved).length,
+      totalTokens: recentTasks.reduce((total, task) => total + task.totalTokens, 0),
+      escalated: recentTasks.filter((task) => task.status === "escalated").length,
+      costTodayCents: recentTasks.reduce((total, task) => total + task.totalCostCents, 0),
+    };
+  },
+});
