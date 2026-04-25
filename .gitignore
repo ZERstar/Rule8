@@ -3,6 +3,7 @@
 
 # Next.js
 /.next/
+/.next-dev/
 /out/
 
 # Environment
@@ -14,8 +15,10 @@
 
 # Misc
 .DS_Store
+.claude/
 *.pem
 npm-debug.log*
+tsconfig.tsbuildinfo
 
 # Vercel
 .vercel

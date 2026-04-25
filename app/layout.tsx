@@ -1,36 +1,37 @@
-import type { Metadata } from 'next'
-import './globals.css'
-import { ConvexClientProvider } from './providers'
+import type { Metadata } from "next";
+import { getToken } from "@/lib/auth-server";
+
+import "./globals.css";
+import { ConvexClientProvider } from "./providers";
 
 export const metadata: Metadata = {
-  title: 'RULE8 — Agent Orchestration for Indie Hackers',
+  title: "Rule8 — Agent Operations for Founders",
   description:
-    'Deploy 8 autonomous AI agents that handle customer support, recover failed payments, and moderate your community — so you ship, not answer tickets.',
-  keywords: ['AI agents', 'autonomous agents', 'indie hackers', 'customer support automation', 'Rule8'],
+    "Deploy autonomous AI crews that handle support, billing, and community — so founders ship instead of answering tickets.",
+  keywords: ["AI agents", "autonomous agents", "founders", "support automation", "Rule8"],
   icons: {
-    icon: [{ url: '/icon.svg', type: 'image/svg+xml' }],
-    shortcut: '/icon.svg',
-    apple: '/icon.svg',
+    icon: [{ url: "/icon.svg", type: "image/svg+xml" }],
+    shortcut: "/icon.svg",
+    apple: "/icon.svg",
   },
   openGraph: {
-    title: 'RULE8 — Agent Orchestration for Indie Hackers',
-    description: 'Deploy 8 autonomous AI agents. Ship faster.',
-    type: 'website',
+    title: "Rule8 — Agent Operations for Founders",
+    description: "Deploy autonomous AI crews. Ship faster.",
+    type: "website",
   },
-}
+};
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: {
-  children: React.ReactNode
+  children: React.ReactNode;
 }) {
+  const token = await getToken();
   return (
     <html lang="en">
       <body>
-        <ConvexClientProvider>
-          {children}
-        </ConvexClientProvider>
+        <ConvexClientProvider initialToken={token}>{children}</ConvexClientProvider>
       </body>
     </html>
-  )
+  );
 }
