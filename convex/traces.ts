@@ -1,5 +1,36 @@
-import { mutation, query } from "./_generated/server";
+import { internalMutation, mutation, query } from "./_generated/server";
 import { v } from "convex/values";
+
+const crewTagValidator = v.union(
+  v.literal("executive"),
+  v.literal("finance"),
+  v.literal("support"),
+  v.literal("community"),
+);
+
+const traceAgentTagValidator = v.union(
+  v.literal("executive"),
+  v.literal("finance"),
+  v.literal("support"),
+  v.literal("community"),
+  v.literal("system"),
+);
+
+const traceStatusValidator = v.union(
+  v.literal("ok"),
+  v.literal("warn"),
+  v.literal("error"),
+);
+
+const traceStepTypeValidator = v.union(
+  v.literal("llm_call"),
+  v.literal("tool_call"),
+  v.literal("tool_result"),
+  v.literal("escalation"),
+  v.literal("resolution"),
+  v.literal("overseer_route"),
+  v.literal("error"),
+);
 
 const LIVE_TRACE_TEMPLATES = [
   {
@@ -87,6 +118,37 @@ export const listRecent = query({
       .withIndex("by_workspace_and_created_at", (q) => q.eq("workspaceId", args.workspaceId))
       .order("desc")
       .take(args.limit);
+  },
+});
+
+export const recordInternal = internalMutation({
+  args: {
+    runId: v.string(),
+    taskId: v.optional(v.id("tasks")),
+    agentId: v.optional(v.id("agents")),
+    agentTag: traceAgentTagValidator,
+    crewTag: crewTagValidator,
+    crewName: v.string(),
+    action: v.string(),
+    stepType: traceStepTypeValidator,
+    model: v.string(),
+    status: traceStatusValidator,
+    toolName: v.optional(v.string()),
+    toolOutputPreview: v.optional(v.string()),
+    tokensIn: v.number(),
+    tokensOut: v.number(),
+    costCents: v.number(),
+    latencyMs: v.number(),
+    cacheHit: v.boolean(),
+    cacheTokens: v.number(),
+    confidence: v.optional(v.number()),
+    workspaceId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    return await ctx.db.insert("traces", {
+      ...args,
+      createdAt: Date.now(),
+    });
   },
 });
 

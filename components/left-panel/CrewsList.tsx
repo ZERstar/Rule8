@@ -17,15 +17,16 @@ export function CrewsList({
   onSelectCrew: (crew: CrewTag) => void;
 }) {
   const agents = useQuery(api.agents.list, { workspaceId: WORKSPACE_ID });
+  type AgentDoc = NonNullable<typeof agents>[number];
 
   const crews = (["finance", "support", "community"] as CrewTag[]).map((tag) => {
-    const crewAgents = (agents ?? []).filter((a) => a.crewTag === tag);
+    const crewAgents = (agents ?? []).filter((a: AgentDoc) => a.crewTag === tag);
     return {
       tag,
       ...CREW_META[tag],
       agentCount: crewAgents.length,
-      workflowCount: crewAgents.reduce((sum, a) => sum + a.workflowCount, 0),
-      active: crewAgents.some((a) => a.status === "active" || a.status === "orchestrating"),
+      workflowCount: crewAgents.reduce((sum: number, a: AgentDoc) => sum + a.workflowCount, 0),
+      active: crewAgents.some((a: AgentDoc) => a.status === "active" || a.status === "orchestrating"),
     };
   });
 

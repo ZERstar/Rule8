@@ -19,8 +19,9 @@ export function CrewDetail({
   const executive = useQuery(api.agents.listByCrew, { workspaceId: WORKSPACE_ID, crewTag: "executive" });
   const crewStats = useQuery(api.tasks.getCrewStats, { workspaceId: WORKSPACE_ID, crewTag });
 
-  const execAgent = executive?.find((a) => a.tag === "overseer");
-  const specialists = (crewAgents ?? []).filter((a) => a.tag !== "overseer");
+  type AgentDoc = NonNullable<typeof crewAgents>[number];
+  const execAgent = executive?.find((a: AgentDoc) => a.tag === "overseer");
+  const specialists = (crewAgents ?? []).filter((a: AgentDoc) => a.tag !== "overseer");
 
   return (
     <div className="flex h-full flex-col overflow-hidden">

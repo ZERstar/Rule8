@@ -21,8 +21,9 @@ export function AgentListColumn({
     crewTag: "executive",
   });
 
-  const execAgent = executive?.find((agent) => agent.tag === "overseer");
-  const specialists = (crewAgents ?? []).filter((agent) => agent.tag !== "overseer");
+  type AgentDoc = NonNullable<typeof crewAgents>[number];
+  const execAgent = executive?.find((agent: AgentDoc) => agent.tag === "overseer");
+  const specialists = (crewAgents ?? []).filter((agent: AgentDoc) => agent.tag !== "overseer");
 
   return (
     <div className="flex h-full flex-col overflow-hidden">

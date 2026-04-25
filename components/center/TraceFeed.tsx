@@ -3,19 +3,18 @@
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
+import type { Id } from "@/convex/_generated/dataModel";
 import { WORKSPACE_ID } from "@/lib/constants";
 import { FilterTabs, type TraceFilter } from "./FilterTabs";
 import { TraceItem } from "./TraceItem";
 import { StatBar } from "./StatBar";
 
-type Doc = NonNullable<ReturnType<typeof useQuery<typeof api.traces.listRecent>>>[number];
-
 export function TraceFeed() {
   const traces = useQuery(api.traces.listRecent, { workspaceId: WORKSPACE_ID, limit: 20 });
   const insertDemo = useMutation(api.traces.insertDemo);
   const [filter, setFilter] = useState<TraceFilter>("all");
-  const [liveIds, setLiveIds] = useState<Set<string>>(new Set());
-  const prevIdsRef = useRef<Set<string>>(new Set());
+  const [liveIds, setLiveIds] = useState<Set<Id<"traces">>>(new Set());
+  const prevIdsRef = useRef<Set<Id<"traces">>>(new Set());
   const stats = useQuery(api.tasks.getStats, { workspaceId: WORKSPACE_ID });
 
   // Mark newly injected traces as live for 3 seconds
@@ -48,8 +47,9 @@ export function TraceFeed() {
     return () => clearInterval(interval);
   }, [insertDemo]);
 
+  type TraceDoc = NonNullable<typeof traces>[number];
   const visible = (traces ?? []).filter(
-    (t) => filter === "all" || t.agentTag === filter,
+    (t: TraceDoc) => filter === "all" || t.agentTag === filter,
   );
 
   const runningCostCents = stats?.costTodayCents ?? 0;

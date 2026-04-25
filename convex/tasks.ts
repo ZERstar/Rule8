@@ -1,4 +1,4 @@
-import { mutation, query } from "./_generated/server";
+import { internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 
 const ONE_DAY_MS = 1000 * 60 * 60 * 24;
@@ -9,6 +9,118 @@ const crewTagValidator = v.union(
   v.literal("support"),
   v.literal("community"),
 );
+
+export const getById = internalQuery({
+  args: { taskId: v.id("tasks") },
+  handler: async (ctx, args) => {
+    return await ctx.db.get(args.taskId);
+  },
+});
+
+export const createInboundIntercomTask = internalMutation({
+  args: {
+    workspaceId: v.string(),
+    externalId: v.optional(v.string()),
+    summary: v.string(),
+    rawPayload: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const now = Date.now();
+
+    return await ctx.db.insert("tasks", {
+      source: "intercom",
+      externalId: args.externalId,
+      summary: args.summary,
+      rawPayload: args.rawPayload,
+      crewTag: "executive",
+      assignedAgentId: undefined,
+      routedByOverseer: false,
+      status: "pending",
+      resolution: undefined,
+      escalationReason: undefined,
+      totalTokens: 0,
+      totalCostCents: 0,
+      latencyMs: undefined,
+      autoResolved: false,
+      workspaceId: args.workspaceId,
+      createdAt: now,
+      completedAt: undefined,
+    });
+  },
+});
+
+export const assignTask = internalMutation({
+  args: {
+    taskId: v.id("tasks"),
+    crewTag: crewTagValidator,
+    assignedAgentId: v.id("agents"),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.taskId, {
+      crewTag: args.crewTag,
+      assignedAgentId: args.assignedAgentId,
+      routedByOverseer: true,
+      status: "running",
+    });
+  },
+});
+
+export const resolveTaskInternal = internalMutation({
+  args: {
+    taskId: v.id("tasks"),
+    resolution: v.string(),
+    totalTokens: v.number(),
+    totalCostCents: v.number(),
+    latencyMs: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.taskId, {
+      status: "resolved",
+      resolution: args.resolution,
+      totalTokens: args.totalTokens,
+      totalCostCents: args.totalCostCents,
+      latencyMs: args.latencyMs,
+      autoResolved: true,
+      completedAt: Date.now(),
+    });
+  },
+});
+
+export const escalateTaskInternal = internalMutation({
+  args: {
+    taskId: v.id("tasks"),
+    reason: v.string(),
+    totalTokens: v.number(),
+    totalCostCents: v.number(),
+    latencyMs: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.taskId, {
+      status: "escalated",
+      escalationReason: args.reason,
+      totalTokens: args.totalTokens,
+      totalCostCents: args.totalCostCents,
+      latencyMs: args.latencyMs,
+      autoResolved: false,
+      completedAt: Date.now(),
+    });
+  },
+});
+
+export const failTaskInternal = internalMutation({
+  args: {
+    taskId: v.id("tasks"),
+    reason: v.string(),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.taskId, {
+      status: "failed",
+      escalationReason: args.reason,
+      autoResolved: false,
+      completedAt: Date.now(),
+    });
+  },
+});
 
 export const getCrewStats = query({
   args: { workspaceId: v.string(), crewTag: crewTagValidator },

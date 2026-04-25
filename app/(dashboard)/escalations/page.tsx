@@ -32,8 +32,9 @@ function timeAgo(ts: number) {
 export default function EscalationsPage() {
   const tasks   = useQuery(api.tasks.listEscalated, { workspaceId: WORKSPACE_ID });
   const resolve = useMutation(api.tasks.resolveEscalation);
+  type TaskDoc  = NonNullable<typeof tasks>[number];
 
-  const totalCost = (tasks ?? []).reduce((s, t) => s + (t.totalCostCents ?? 0), 0);
+  const totalCost = (tasks ?? []).reduce((s: number, t: TaskDoc) => s + (t.totalCostCents ?? 0), 0);
 
   return (
     <SecondaryPageShell>
@@ -57,7 +58,7 @@ export default function EscalationsPage() {
           {[
             { label: "Open escalations",  value: tasks?.length ?? "—" },
             { label: "Total cost impact", value: tasks ? `$${(totalCost / 100).toFixed(2)}` : "—" },
-            { label: "Oldest item",       value: tasks?.length ? timeAgo(Math.min(...tasks.map(t => t.createdAt))) : "—" },
+            { label: "Oldest item",       value: tasks?.length ? timeAgo(Math.min(...tasks.map((t: TaskDoc) => t.createdAt))) : "—" },
           ].map(({ label, value }) => (
             <div
               key={label}
@@ -102,7 +103,7 @@ export default function EscalationsPage() {
           </div>
         ) : (
           <div className="space-y-3">
-            {tasks.map(task => {
+            {tasks.map((task: TaskDoc) => {
               const crew  = CREW_META[task.crewTag as keyof typeof CREW_META];
               const color = CREW_COLOR[task.crewTag] ?? "var(--color-t2)";
               return (

@@ -1,6 +1,6 @@
 import type { Id } from "./_generated/dataModel";
 import type { MutationCtx } from "./_generated/server";
-import { mutation, query } from "./_generated/server";
+import { internalQuery, mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 
 const DEFAULT_MODEL = "claude-sonnet-4-6";
@@ -312,6 +312,34 @@ const crewTagValidator = v.union(
   v.literal("support"),
   v.literal("community"),
 );
+
+export const getCrewLead = internalQuery({
+  args: { workspaceId: v.string(), crewTag: crewTagValidator },
+  handler: async (ctx, args) => {
+    const agents = await ctx.db
+      .query("agents")
+      .withIndex("by_workspace_and_crew_tag", (q) =>
+        q.eq("workspaceId", args.workspaceId).eq("crewTag", args.crewTag),
+      )
+      .take(10);
+
+    return agents.find((agent) => agent.isCrewLead) ?? agents[0] ?? null;
+  },
+});
+
+export const getOverseer = internalQuery({
+  args: { workspaceId: v.string() },
+  handler: async (ctx, args) => {
+    const agents = await ctx.db
+      .query("agents")
+      .withIndex("by_workspace_and_crew_tag", (q) =>
+        q.eq("workspaceId", args.workspaceId).eq("crewTag", "executive"),
+      )
+      .take(10);
+
+    return agents.find((agent) => agent.tag === "overseer") ?? agents[0] ?? null;
+  },
+});
 
 export const listByCrew = query({
   args: { workspaceId: v.string(), crewTag: crewTagValidator },

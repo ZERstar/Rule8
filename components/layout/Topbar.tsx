@@ -3,17 +3,15 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-const NAV_ITEMS = [
-  { path: "/dashboard",    label: "Overview"     },
-  { path: "/escalations",  label: "Escalations"  },
-  { path: "/integrations", label: "Integrations" },
-  { path: "/prompts",      label: "Prompts"       },
+const NAV = [
+  { href: "/dashboard",    label: "Overview"     },
+  { href: "/escalations",  label: "Escalations"  },
+  { href: "/integrations", label: "Integrations" },
+  { href: "/prompts",      label: "Prompts"      },
 ];
 
 export function Topbar() {
   const pathname = usePathname();
-  const isPreview = pathname.startsWith("/preview");
-  const prefix = isPreview ? "/preview" : "";
 
   return (
     <header
@@ -22,7 +20,7 @@ export function Topbar() {
     >
       {/* Logo */}
       <div className="flex items-center gap-3">
-        <Link href={`${prefix}/dashboard`} className="flex items-center gap-2.5">
+        <Link href="/dashboard" className="flex items-center gap-2.5">
           <div
             className="flex h-7 w-7 items-center justify-center rounded-[6px] font-mono text-[13px] font-semibold text-black"
             style={{ background: "var(--color-gold)" }}
@@ -39,24 +37,15 @@ export function Topbar() {
         <span className="font-mono text-[10px]" style={{ color: "var(--color-t3)" }}>
           Agent OS
         </span>
-        {isPreview && (
-          <span
-            className="rounded-[4px] px-2 py-0.5 font-mono text-[9px] uppercase tracking-[0.12em]"
-            style={{ background: "rgba(200,151,42,0.10)", color: "var(--color-gold)" }}
-          >
-            Preview
-          </span>
-        )}
       </div>
 
       {/* Nav */}
       <nav className="hidden items-center gap-1 md:flex">
-        {NAV_ITEMS.map(({ path, label }) => {
-          const href = `${prefix}${path}`;
+        {NAV.map(({ href, label }) => {
           const active = pathname === href;
           return (
             <Link
-              key={path}
+              key={href}
               href={href}
               className="relative px-3 py-1 font-mono text-[10px] uppercase tracking-[0.12em] transition"
               style={{ color: active ? "var(--color-gold)" : "var(--color-t3)" }}
