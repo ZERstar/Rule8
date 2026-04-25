@@ -1,4 +1,4 @@
-import { query } from "./_generated/server";
+import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 
 const ONE_DAY_MS = 1000 * 60 * 60 * 24;
@@ -39,6 +39,30 @@ export const list = query({
       .withIndex("by_workspace_and_created_at", (q) => q.eq("workspaceId", args.workspaceId))
       .order("desc")
       .collect();
+  },
+});
+
+export const listEscalated = query({
+  args: { workspaceId: v.string() },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("tasks")
+      .withIndex("by_workspace_and_status", (q) =>
+        q.eq("workspaceId", args.workspaceId).eq("status", "escalated"),
+      )
+      .order("desc")
+      .collect();
+  },
+});
+
+export const resolveEscalation = mutation({
+  args: { taskId: v.id("tasks"), resolution: v.string() },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.taskId, {
+      status: "resolved",
+      resolution: args.resolution,
+      completedAt: Date.now(),
+    });
   },
 });
 
