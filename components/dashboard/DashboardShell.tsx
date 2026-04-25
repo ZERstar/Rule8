@@ -1,15 +1,18 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { useMutation } from "convex/react";
 
+import { api } from "@/convex/_generated/api";
 import { TraceFeed } from "@/components/center/TraceFeed";
 import { GlobalExecBar } from "@/components/GlobalExecBar";
 import { CrewRoomOverlay } from "@/components/crew-room/CrewRoomOverlay";
 import { ExecutiveBlock } from "@/components/left-panel/ExecutiveBlock";
 import { CrewsList } from "@/components/left-panel/CrewsList";
 import { Topbar } from "@/components/layout/Topbar";
+import type { ExecutiveChatMode } from "@/components/right-panel/ModeTabs";
 import { RightPanel } from "@/components/right-panel/RightPanel";
-import { EXEC_RESPONSES } from "@/lib/constants";
+import { EXEC_RESPONSES, WORKSPACE_ID } from "@/lib/constants";
 import {
   INITIAL_EXECUTIVE_MESSAGE,
   type CrewTag,
@@ -27,6 +30,7 @@ export function DashboardShell() {
   const [executiveIsTyping, setExecutiveIsTyping] = useState(false);
   const [showQuickReplies, setShowQuickReplies] = useState(true);
   const nextIdRef = useRef(2);
+  const createAgent = useMutation(api.agents.createFromBrief);
 
   const openExecutive = () => {
     setIsCrewRoomOpen(false);
@@ -38,7 +42,7 @@ export function DashboardShell() {
     setIsCrewRoomOpen(true);
   };
 
-  const sendExecutiveMessage = (text: string) => {
+  const sendExecutiveMessage = (text: string, mode: ExecutiveChatMode = "General") => {
     const trimmed = text.trim();
     if (!trimmed) return;
     const founder: ExecutiveChatMessage = { id: nextIdRef.current++, role: "founder", text: trimmed };
@@ -46,13 +50,45 @@ export function DashboardShell() {
     setShowQuickReplies(false);
     setExecutiveMessages((m) => [...m, founder]);
     setExecutiveIsTyping(true);
+    if (mode === "Create Agent") {
+      void createAgent({ workspaceId: WORKSPACE_ID, brief: trimmed })
+        .then((result) => {
+          setSelectedCrew(result.crewTag);
+          setExecutiveMessages((m) => [
+            ...m,
+            {
+              id: nextIdRef.current++,
+              role: "executive",
+              text: `Created ${result.name} in ${result.crewTag} as chamber ${result.chamberId}. It is now available in the crew lists.`,
+            },
+          ]);
+        })
+        .catch((error: unknown) => {
+          const message = error instanceof Error ? error.message : "Agent creation failed.";
+          setExecutiveMessages((m) => [
+            ...m,
+            {
+              id: nextIdRef.current++,
+              role: "executive",
+              text: `Agent creation failed: ${message}`,
+            },
+          ]);
+        })
+        .finally(() => {
+          setExecutiveIsTyping(false);
+        });
+      return;
+    }
+
     window.setTimeout(() => {
       setExecutiveMessages((m) => [
         ...m,
         {
           id: nextIdRef.current++,
           role: "executive",
-          text: EXEC_RESPONSES[Math.floor(Math.random() * EXEC_RESPONSES.length)],
+          text: mode === "Review"
+            ? "Review mode is active. I’m ready to inspect the latest escalations, traces, or prompt changes."
+            : EXEC_RESPONSES[Math.floor(Math.random() * EXEC_RESPONSES.length)],
         },
       ]);
       setExecutiveIsTyping(false);
@@ -108,7 +144,7 @@ export function DashboardShell() {
           className="overflow-hidden border-r"
           style={{ gridRow: 2, gridColumn: 2, borderColor: "var(--color-b1)", background: "var(--color-bg)" }}
         >
-          <TraceFeed />
+          <TraceFeed enableDemoTraces />
         </section>
 
         {/* Row 2, Col 3 — Right panel */}
@@ -145,7 +181,7 @@ export function DashboardShell() {
             <CrewsList selectedCrew={selectedCrew} onSelectCrew={setSelectedCrew} onOpenCrewRoom={openCrewRoom} />
           </div>
           <div className="h-[500px] overflow-hidden rounded-[8px] border" style={{ borderColor: "var(--color-b1)", background: "var(--color-bg)" }}>
-            <TraceFeed />
+            <TraceFeed enableDemoTraces />
           </div>
           <div className="h-[420px] overflow-hidden rounded-[8px] border" style={{ borderColor: "var(--color-b1)", background: "var(--color-s1)" }}>
             <RightPanel
