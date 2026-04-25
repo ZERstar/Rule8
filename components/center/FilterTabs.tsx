@@ -1,5 +1,7 @@
 "use client";
 
+import { cn } from "@/lib/utils";
+
 export type TraceFilter = "all" | "executive" | "finance" | "support" | "community";
 
 const TABS: { key: TraceFilter; label: string }[] = [
@@ -10,31 +12,29 @@ const TABS: { key: TraceFilter; label: string }[] = [
   { key: "community", label: "Community" },
 ];
 
-export function FilterTabs({ active, onChange }: { active: TraceFilter; onChange: (f: TraceFilter) => void; }) {
+export function FilterTabs({ active, onChange }: { active: TraceFilter; onChange: (f: TraceFilter) => void }) {
   return (
-    <div
-      className="flex items-center gap-0 border-b"
-      style={{ borderColor: "rgba(255,255,255,0.07)", height: 40, paddingLeft: 16 }}
-    >
-      {TABS.map(({ key, label }) => {
-        const isActive = active === key;
-        return (
-          <button
-            key={key}
-            className="relative h-full px-3 font-mono text-[10px] uppercase tracking-[0.14em] transition-colors"
-            style={{ color: isActive ? "var(--color-gold)" : "var(--color-t3)" }}
-            onClick={() => onChange(key)}
-          >
-            {label}
-            {isActive && (
-              <span
-                className="absolute bottom-0 left-0 right-0 h-[2px]"
-                style={{ background: "var(--color-gold)" }}
-              />
-            )}
-          </button>
-        );
-      })}
+    <div className="border-b border-[var(--color-b1)] px-5 py-3">
+      <div className="flex flex-wrap gap-1">
+        {TABS.map(({ key, label }) => {
+          const isActive = active === key;
+          return (
+            <button
+              key={key}
+              type="button"
+              onClick={() => onChange(key)}
+              className={cn(
+                "rounded-lg px-3 py-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.14em] transition-all",
+                isActive
+                  ? "bg-foreground text-white shadow-[0_2px_8px_rgba(15,23,42,0.18)]"
+                  : "text-[var(--color-t3)] hover:bg-[var(--color-surface-2)] hover:text-foreground",
+              )}
+            >
+              {label}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }

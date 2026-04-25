@@ -4,92 +4,77 @@ import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { WORKSPACE_ID } from "@/lib/constants";
 
-const POWER_TAGS = ["creates agents", "task graphs", "handoffs", "memory", "eval", "policy"];
+import { Button } from "@/components/ui/button";
+import { SectionLabel } from "@/components/ui/section-label";
+import { GradientText } from "@/components/ui/gradient-text";
+
+const POWER_TAGS = ["creates agents", "reviews escalations", "routes work"];
 
 export function ExecutiveBlock({ onOpen }: { onOpen: () => void }) {
   const stats = useQuery(api.tasks.getStats, { workspaceId: WORKSPACE_ID });
+  const statData = stats ?? { agentsManaged: 0, tasksToday: 0, costTodayCents: 0 };
 
   return (
     <div
-      className="relative flex h-full cursor-pointer flex-col overflow-hidden transition-all"
-      style={{
-        background: "linear-gradient(160deg, rgba(200,151,42,0.18) 0%, rgba(200,151,42,0.06) 55%, rgba(200,151,42,0.02) 100%)",
-        borderBottom: "1px solid rgba(200,151,42,0.28)",
-      }}
+      className="group/exec relative flex h-full w-full cursor-pointer flex-col overflow-hidden rounded-2xl border border-[var(--color-b1)] bg-white text-left shadow-[0_1px_3px_rgba(15,23,42,0.04),0_8px_24px_rgba(15,23,42,0.04)] transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_4px_8px_rgba(15,23,42,0.06),0_18px_36px_rgba(0,82,255,0.10)]"
       onClick={onOpen}
-      onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.background = "linear-gradient(160deg, rgba(200,151,42,0.24) 0%, rgba(200,151,42,0.10) 55%, rgba(200,151,42,0.04) 100%)"; }}
-      onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.background = "linear-gradient(160deg, rgba(200,151,42,0.18) 0%, rgba(200,151,42,0.06) 55%, rgba(200,151,42,0.02) 100%)"; }}
     >
-      {/* Watermark */}
-      <span
-        className="pointer-events-none absolute -right-3 -top-5 select-none font-mono font-black leading-none"
-        style={{ fontSize: 160, color: "rgba(200,151,42,0.04)", zIndex: 0 }}
+      {/* Subtle gradient glow in corner */}
+      <div
+        className="pointer-events-none absolute -right-12 -top-12 size-48 rounded-full opacity-60 blur-3xl transition-opacity duration-500 group-hover/exec:opacity-100"
+        style={{ background: "radial-gradient(circle, rgba(0,82,255,0.15), transparent 70%)" }}
         aria-hidden
-      >
-        E
-      </span>
+      />
 
-      <div className="relative z-10 flex h-full flex-col justify-between p-4">
-        {/* Header */}
+      <div className="relative z-10 flex h-full flex-col justify-between p-6">
         <div>
-          <div className="flex items-center gap-2.5">
-            <div
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[6px] font-mono text-[14px] font-black text-black"
-              style={{ background: "var(--color-gold)" }}
-            >
-              E
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="text-[15px] font-bold" style={{ color: "var(--color-gold)" }}>
-                  Executive
-                </span>
-                <span
-                  className="flex items-center gap-1 rounded-full px-2 py-0.5 font-mono text-[8px] font-bold"
-                  style={{ background: "rgba(34,197,94,0.15)", color: "var(--color-green)" }}
-                >
-                  <span
-                    className="h-[5px] w-[5px] rounded-full"
-                    style={{ background: "var(--color-green)", animation: "pulse-gold 2s ease-in-out infinite" }}
-                  />
-                  LIVE
-                </span>
-              </div>
-              <p className="font-mono text-[9px] uppercase tracking-[0.14em]" style={{ color: "var(--color-t3)" }}>
-                Agent OS · Orchestrator
-              </p>
-            </div>
+          {/* Header */}
+          <div className="flex items-center justify-between">
+            <SectionLabel>Executive Prime</SectionLabel>
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-[var(--color-green)]/20 bg-[var(--color-green-bg)] px-2.5 py-1">
+              <span
+                className="size-1.5 rounded-full bg-[var(--color-green)]"
+                style={{ animation: "pulseDot 2s ease-in-out infinite" }}
+              />
+              <span className="font-mono text-[9px] font-semibold uppercase tracking-[0.14em] text-[var(--color-green)]">
+                Live
+              </span>
+            </span>
           </div>
 
-          {/* Stats — PDF style: small label, big number */}
-          <div className="mt-4 grid grid-cols-3 gap-1">
+          {/* Heading */}
+          <h2 className="mt-5 text-[28px] font-normal leading-[1.1] tracking-[-0.025em] text-foreground" style={{ fontFamily: "var(--font-display)" }}>
+            Strategic orchestration for{" "}
+            <GradientText>every crew</GradientText>.
+          </h2>
+          <p className="mt-3 text-[13.5px] leading-[1.6] text-[var(--color-t3)]">
+            Launch agents, review escalations, and redirect work from one control surface built for founders.
+          </p>
+
+          {/* Stats — three-column with vertical dividers */}
+          <div className="mt-6 grid grid-cols-3 divide-x divide-[var(--color-b1)] rounded-xl border border-[var(--color-b1)] bg-[var(--color-surface-2)]/50">
             {[
-              { label: "AGENTS",      value: stats?.agentsManaged ?? "—" },
-              { label: "TASKS TODAY", value: stats?.tasksToday    ?? "—" },
-              { label: "COST TODAY",  value: stats ? `$${((stats.costTodayCents ?? 0) / 100).toFixed(2)}` : "—" },
+              { label: "Agents", value: statData.agentsManaged },
+              { label: "Tasks", value: statData.tasksToday },
+              { label: "Spend", value: `$${(statData.costTodayCents / 100).toFixed(2)}` },
             ].map(({ label, value }) => (
-              <div
-                key={label}
-                className="flex flex-col items-center rounded-[4px] px-1 py-2.5"
-                style={{ background: "rgba(200,151,42,0.10)" }}
-              >
-                <span className="font-bold leading-none" style={{ fontSize: 22, color: "var(--color-t1)" }}>
+              <div key={label} className="flex flex-col items-center justify-center px-3 py-4">
+                <p className="text-[24px] font-semibold leading-none tracking-[-0.02em] text-foreground">
                   {value}
-                </span>
-                <span className="mt-1.5 text-center font-mono text-[8px] uppercase tracking-[0.12em]" style={{ color: "var(--color-t3)" }}>
+                </p>
+                <p className="mt-2 font-mono text-[9px] uppercase tracking-[0.14em] text-[var(--color-t3)]">
                   {label}
-                </span>
+                </p>
               </div>
             ))}
           </div>
 
           {/* Power tags */}
-          <div className="mt-3 flex flex-wrap gap-1">
+          <div className="mt-5 flex flex-wrap gap-1.5">
             {POWER_TAGS.map(tag => (
               <span
                 key={tag}
-                className="rounded-[3px] px-[6px] py-[3px] font-mono text-[9px]"
-                style={{ background: "rgba(200,151,42,0.10)", color: "var(--color-gold)", border: "1px solid rgba(200,151,42,0.20)" }}
+                className="rounded-full border border-[var(--color-b1)] bg-white px-2.5 py-1 font-mono text-[9px] uppercase tracking-[0.12em] text-[var(--color-t3)]"
               >
                 {tag}
               </span>
@@ -97,16 +82,15 @@ export function ExecutiveBlock({ onOpen }: { onOpen: () => void }) {
           </div>
         </div>
 
-        {/* CTA pinned to bottom */}
-        <button
-          className="mt-4 w-full rounded-[6px] py-2.5 font-mono text-[11px] font-bold text-black transition"
-          style={{ background: "var(--color-gold)" }}
-          onMouseEnter={e => (e.currentTarget.style.background = "var(--color-gold-l)")}
-          onMouseLeave={e => (e.currentTarget.style.background = "var(--color-gold)")}
+        {/* CTA */}
+        <Button
+          className="mt-6 w-full font-mono text-[10px] uppercase tracking-[0.16em]"
+          size="lg"
           onClick={e => { e.stopPropagation(); onOpen(); }}
         >
-          → Open conversation
-        </button>
+          Open Executive Conversation
+          <span className="transition-transform group-hover/exec:translate-x-0.5">→</span>
+        </Button>
       </div>
     </div>
   );

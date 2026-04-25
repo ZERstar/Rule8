@@ -3,7 +3,7 @@ import type { MutationCtx } from "./_generated/server";
 import { internalQuery, mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 
-const DEFAULT_MODEL = "claude-sonnet-4-6";
+const DEFAULT_MODEL = process.env.AGENT_MODEL_ID ?? "claude-sonnet-4-6";
 
 const DEMO_AGENTS = [
   {
@@ -313,6 +313,68 @@ const crewTagValidator = v.union(
   v.literal("community"),
 );
 
+type AgentBlueprint = {
+  crewTag: "finance" | "support" | "community";
+  tag: "billing" | "support" | "community";
+  crewName: string;
+  crewIcon: string;
+  crewColor: string;
+  integrationNames: string[];
+  baseName: string;
+  defaultDescription: string;
+};
+
+function getCrewBlueprint(brief: string): AgentBlueprint {
+  const normalized = brief.toLowerCase();
+
+  if (/(billing|refund|stripe|invoice|payment|revenue|finance)/.test(normalized)) {
+    return {
+      crewTag: "finance",
+      tag: "billing",
+      crewName: "Finance Crew",
+      crewIcon: "💰",
+      crewColor: "#34D399",
+      integrationNames: ["Stripe", "Convex"],
+      baseName: "Finance",
+      defaultDescription: "Billing automation and refund operations",
+    };
+  }
+
+  if (/(discord|community|moderation|slack|social|spam)/.test(normalized)) {
+    return {
+      crewTag: "community",
+      tag: "community",
+      crewName: "Community Crew",
+      crewIcon: "🌐",
+      crewColor: "#A78BFA",
+      integrationNames: ["Discord", "Slack"],
+      baseName: "Community",
+      defaultDescription: "Community moderation and social operations",
+    };
+  }
+
+  return {
+    crewTag: "support",
+    tag: "support",
+    crewName: "Support Crew",
+    crewIcon: "🎧",
+    crewColor: "#60A5FA",
+    integrationNames: ["Intercom", "Convex"],
+    baseName: "Support",
+    defaultDescription: "Customer support and product guidance",
+  };
+}
+
+function titleCaseName(text: string) {
+  return text
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 3)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join(" ");
+}
+
 export const getCrewLead = internalQuery({
   args: { workspaceId: v.string(), crewTag: crewTagValidator },
   handler: async (ctx, args) => {
@@ -378,6 +440,62 @@ export const get = query({
   },
 });
 
+export const createFromBrief = mutation({
+  args: {
+    workspaceId: v.string(),
+    brief: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const blueprint = getCrewBlueprint(args.brief);
+    const existingAgents = await ctx.db
+      .query("agents")
+      .withIndex("by_workspace_and_chamber_id", (q) => q.eq("workspaceId", args.workspaceId))
+      .collect();
+
+    const nextChamberNumber = existingAgents.length + 1;
+    const chamberId = String(nextChamberNumber).padStart(2, "0");
+    const suffix = existingAgents.filter((agent) => agent.crewTag === blueprint.crewTag).length + 1;
+
+    const compactBrief = args.brief.replace(/\s+/g, " ").trim();
+    const inferredName =
+      titleCaseName(compactBrief.split(/[:,-]/)[0] ?? "") || `${blueprint.baseName} Forge`;
+    const name = `${inferredName} ${suffix}`.trim();
+    const now = Date.now();
+
+    const agentId = await ctx.db.insert("agents", {
+      chamberId,
+      name,
+      tag: blueprint.tag,
+      crewTag: blueprint.crewTag,
+      crewName: blueprint.crewName,
+      crewIcon: blueprint.crewIcon,
+      crewColor: blueprint.crewColor,
+      status: "idle",
+      description: compactBrief || blueprint.defaultDescription,
+      isCrewLead: false,
+      integrationNames: blueprint.integrationNames,
+      workflowCount: 0,
+      lastAction: "Created from Executive brief",
+      systemPrompt: `You are ${name}. ${compactBrief || blueprint.defaultDescription}.`,
+      promptVersion: 1,
+      modelId: DEFAULT_MODEL,
+      integrationIds: [],
+      actionsLast24h: 0,
+      costLast24hCents: 0,
+      workspaceId: args.workspaceId,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    return {
+      agentId,
+      chamberId,
+      crewTag: blueprint.crewTag,
+      name,
+    };
+  },
+});
+
 export const seedDemoData = mutation({
   args: { workspaceId: v.string() },
   handler: async (ctx, args) => {
@@ -401,6 +519,29 @@ export const seedDemoData = mutation({
       });
 
       agentIdsByChamber.set(agent.chamberId, agentId);
+    }
+
+    await ctx.db.insert("productContext", {
+      workspaceId: args.workspaceId,
+      key: "refund_limit_cents",
+      value: "5000",
+      category: "billing",
+      updatedAt: now,
+      updatedBy: "seed",
+    });
+
+    for (const provider of ["stripe", "intercom", "discord", "slack", "resend"] as const) {
+      await ctx.db.insert("integrations", {
+        workspaceId: args.workspaceId,
+        provider,
+        status: "disconnected",
+        accessTokenRef: undefined,
+        config: undefined,
+        connectedAt: undefined,
+        lastWebhookAt: undefined,
+        createdAt: now,
+        updatedAt: now,
+      });
     }
 
     for (const task of DEMO_TASKS) {
@@ -487,6 +628,58 @@ export const seedDemoData = mutation({
   },
 });
 
+export const updatePrompt = mutation({
+  args: {
+    agentId: v.id("agents"),
+    systemPrompt: v.string(),
+    changeNote: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const agent = await ctx.db.get(args.agentId);
+    if (!agent) throw new Error("Agent not found");
+
+    const newVersion = agent.promptVersion + 1;
+    await ctx.db.patch(args.agentId, {
+      systemPrompt: args.systemPrompt,
+      promptVersion: newVersion,
+      updatedAt: Date.now(),
+    });
+
+    await ctx.db.insert("promptVersions", {
+      agentId: args.agentId,
+      version: newVersion,
+      systemPrompt: args.systemPrompt,
+      changedBy: "founder",
+      changeNote: args.changeNote,
+      workspaceId: agent.workspaceId,
+      createdAt: Date.now(),
+    });
+
+    return newVersion;
+  },
+});
+
+export const purgeTasksAndTraces = mutation({
+  args: { workspaceId: v.string() },
+  handler: async (ctx, args) => {
+    const traces = await ctx.db
+      .query("traces")
+      .withIndex("by_workspace_and_created_at", (q) => q.eq("workspaceId", args.workspaceId))
+      .collect();
+    for (const trace of traces) {
+      await ctx.db.delete(trace._id);
+    }
+
+    const tasks = await ctx.db
+      .query("tasks")
+      .withIndex("by_workspace_and_created_at", (q) => q.eq("workspaceId", args.workspaceId))
+      .collect();
+    for (const task of tasks) {
+      await ctx.db.delete(task._id);
+    }
+  },
+});
+
 async function clearWorkspace(ctx: MutationCtx, workspaceId: string) {
   const traces = await ctx.db
     .query("traces")
@@ -510,5 +703,21 @@ async function clearWorkspace(ctx: MutationCtx, workspaceId: string) {
     .collect();
   for (const agent of agents) {
     await ctx.db.delete(agent._id);
+  }
+
+  const integrations = await ctx.db
+    .query("integrations")
+    .withIndex("by_workspace_and_provider", (q) => q.eq("workspaceId", workspaceId))
+    .collect();
+  for (const integration of integrations) {
+    await ctx.db.delete(integration._id);
+  }
+
+  const productContext = await ctx.db
+    .query("productContext")
+    .withIndex("by_workspace_and_key", (q) => q.eq("workspaceId", workspaceId))
+    .collect();
+  for (const entry of productContext) {
+    await ctx.db.delete(entry._id);
   }
 }

@@ -5,6 +5,9 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { startTransition, useState } from "react";
 
 import { authClient } from "@/lib/auth-client";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { ROUTES, normalizeRedirectTarget } from "@/lib/routes";
 
 type AuthMode = "sign-in" | "sign-up";
 
@@ -18,10 +21,10 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const alternateHref = isSignUp ? "/sign-in" : "/sign-up";
+  const alternateHref = isSignUp ? ROUTES.signIn : ROUTES.signUp;
   const alternateLabel = isSignUp ? "Already have credentials?" : "Need an account?";
   const alternateCta = isSignUp ? "Sign in" : "Create one";
-  const redirectTo = searchParams.get("redirectTo") || "/dashboard";
+  const redirectTo = normalizeRedirectTarget(searchParams.get("redirectTo"));
 
   const onSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -80,13 +83,13 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
   return (
     <div className="mx-auto w-full max-w-md">
       <div className="mb-8">
-        <p className="mb-3 font-mono text-[11px] uppercase tracking-[0.16em] text-[var(--color-t3)]">
+        <p className="mb-3 font-mono text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
           {isSignUp ? "Create Founder Access" : "Founder Login"}
         </p>
-        <h2 className="text-2xl font-semibold tracking-[-0.02em] text-[var(--color-t1)]">
+        <h2 className="text-[34px] font-semibold tracking-[-0.05em] text-foreground">
           {isSignUp ? "Create your Rule8 account" : "Sign in to Rule8"}
         </h2>
-        <p className="mt-3 text-sm leading-7 text-[var(--color-t2)]">
+        <p className="mt-4 text-[15px] leading-8 text-muted-foreground">
           {isSignUp
             ? "Use a local email and password for the Sprint 1 dashboard build."
             : "Use the credentials you created during sign-up."}
@@ -94,7 +97,7 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
       </div>
 
       <form className="space-y-5" onSubmit={onSubmit}>
-        {isSignUp ? (
+        {isSignUp && (
           <Field
             autoComplete="name"
             label="Founder Name"
@@ -103,7 +106,7 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
             type="text"
             value={name}
           />
-        ) : null}
+        )}
         <Field
           autoComplete="email"
           label="Email"
@@ -121,14 +124,14 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
           value={password}
         />
 
-        {error ? (
-          <p className="rounded-[10px] border border-[rgba(239,68,68,0.24)] bg-[rgba(239,68,68,0.08)] px-4 py-3 text-sm text-[var(--color-red)]">
+        {error && (
+          <p className="rounded-[20px] border border-[rgba(216,95,75,0.24)] bg-[rgba(216,95,75,0.08)] px-4 py-3 text-sm text-red">
             {error}
           </p>
-        ) : null}
+        )}
 
-        <button
-          className="inline-flex h-12 w-full items-center justify-center rounded-[10px] bg-[var(--color-gold)] px-4 font-mono text-[12px] font-semibold uppercase tracking-[0.12em] text-black transition hover:bg-[var(--color-gold-l)] disabled:cursor-not-allowed disabled:opacity-60"
+        <Button
+          className="h-12 w-full rounded-full px-4 font-mono text-[12px] font-semibold uppercase tracking-[0.16em] text-black disabled:cursor-not-allowed disabled:opacity-60"
           disabled={isSubmitting}
           type="submit"
         >
@@ -139,13 +142,13 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
             : isSignUp
               ? "Create account"
               : "Sign in"}
-        </button>
+        </Button>
       </form>
 
-      <p className="mt-6 text-sm text-[var(--color-t2)]">
+      <p className="mt-6 text-sm text-muted-foreground">
         {alternateLabel}{" "}
         <Link
-          className="font-medium text-[var(--color-gold)] transition hover:text-[var(--color-gold-l)]"
+          className="font-medium text-gold transition hover:text-gold-l"
           href={alternateHref}
         >
           {alternateCta}
@@ -172,12 +175,12 @@ function Field({
 }) {
   return (
     <label className="block">
-      <span className="mb-2 block font-mono text-[11px] uppercase tracking-[0.14em] text-[var(--color-t3)]">
+      <span className="mb-2.5 block font-mono text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
         {label}
       </span>
-      <input
+      <Input
         autoComplete={autoComplete}
-        className="h-12 w-full rounded-[10px] border border-[var(--color-b2)] bg-[var(--color-s2)] px-4 text-sm text-[var(--color-t1)] outline-none transition placeholder:text-[var(--color-t3)] focus:border-[var(--color-gold)] focus:ring-2 focus:ring-[var(--color-gold-a12)]"
+        className="h-12 w-full rounded-[20px] border-b2 bg-popover px-4 text-sm text-foreground placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-gold-a12 focus-visible:border-gold"
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
         required

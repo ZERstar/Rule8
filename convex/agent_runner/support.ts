@@ -31,13 +31,58 @@ export const handleTask = internalAction({
       throw new Error("Assigned agent not found for task.");
     }
 
+    // US-17: Load episodic context from prior interactions with this user
+    let episodicContext = "";
+    if (task.userEmail) {
+      const priorTasks = await ctx.runQuery(internal.tasks.getRecentByUserEmail, {
+        workspaceId: args.workspaceId,
+        userEmail: task.userEmail,
+        excludeTaskId: task._id,
+        limit: 5,
+      });
+
+      if (priorTasks.length > 0) {
+        episodicContext =
+          `\n\nEpisodic context: ${priorTasks.length} prior interaction${priorTasks.length === 1 ? "" : "s"} with this user:\n` +
+          priorTasks
+            .map(
+              (t: { summary: string; resolution?: string; escalationReason?: string; createdAt: number }, i: number) =>
+                `${i + 1}. [${new Date(t.createdAt).toISOString()}] ${t.summary.slice(0, 100)} → ${(t.resolution ?? t.escalationReason ?? "unresolved").slice(0, 80)}`,
+            )
+            .join("\n");
+
+        await ctx.runMutation(internal.traces.recordInternal, {
+          runId: args.runId,
+          taskId: task._id,
+          agentId: assignedAgent._id,
+          agentTag: "support",
+          crewTag: task.crewTag,
+          crewName: assignedAgent.crewName,
+          action: `Loaded ${priorTasks.length} prior interaction${priorTasks.length === 1 ? "" : "s"} for episodic context.`,
+          stepType: "tool_call",
+          model: assignedAgent.modelId,
+          status: "ok",
+          toolName: "memory_lookup",
+          toolOutputPreview: `Episodic context: ${priorTasks.length} prior interactions`,
+          tokensIn: 0,
+          tokensOut: 0,
+          costCents: 0,
+          latencyMs: 40,
+          cacheHit: false,
+          cacheTokens: 0,
+          confidence: 0.99,
+          workspaceId: args.workspaceId,
+        });
+      }
+    }
+
     const modelResult = await runAgentModel({
       systemPrompt: buildWorkerSystemPrompt({
         agentName: assignedAgent.name,
         crewName: assignedAgent.crewName,
         description: assignedAgent.description,
       }),
-      userPrompt: `Task summary:\n${task.summary}\n\nRaw payload:\n${task.rawPayload}`,
+      userPrompt: `Task summary:\n${task.summary}\n\nRaw payload:\n${task.rawPayload}${episodicContext}`,
       maxTokens: 320,
       tools: SUPPORT_TOOLS,
       mockText: getReplyFallback(task.summary, assignedAgent.crewName),

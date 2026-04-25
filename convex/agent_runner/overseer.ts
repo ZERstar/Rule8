@@ -1,6 +1,8 @@
 import { v } from "convex/values";
 
 import { internal } from "../_generated/api";
+import type { Id } from "../_generated/dataModel";
+import type { ActionCtx } from "../_generated/server";
 import { internalAction } from "../_generated/server";
 import { runAgentModel } from "../../lib/anthropic";
 import { buildOverseerSystemPrompt } from "../../lib/agents/prompts";
@@ -11,8 +13,25 @@ type RouteDecision = {
   reason: string;
 };
 
+type RouteTaskArgs = {
+  taskId: Id<"tasks">;
+  workspaceId: string;
+};
+
 function heuristicRoute(summary: string) {
   const normalized = summary.toLowerCase();
+  const shouldEscalate =
+    /(compliance|legal|policy|partner|accounting|security|edge case|weird|unusual|exception|approval)/.test(
+      normalized,
+    );
+
+  if (shouldEscalate) {
+    return {
+      crewTag: "escalate",
+      confidence: 0.42,
+      reason: "Detected policy-sensitive or ambiguous language that requires executive review.",
+    } satisfies RouteDecision;
+  }
 
   if (/(refund|charged|charge|billing|invoice|payment|card)/.test(normalized)) {
     return {
@@ -62,14 +81,12 @@ function parseRouteDecision(text: string, fallback: RouteDecision): RouteDecisio
 type RouteResult =
   | { status: "escalated"; reason: string }
   | { status: "failed"; reason: string }
-  | { status: "running"; assignedAgentId: string; crewTag: string };
+  | { status: "running"; assignedAgentId: Id<"agents">; crewTag: "finance" | "support" };
 
-export const routeTask = internalAction({
-  args: {
-    taskId: v.id("tasks"),
-    workspaceId: v.string(),
-  },
-  handler: async (ctx, args): Promise<RouteResult> => {
+async function routeTaskHandler(
+  ctx: ActionCtx,
+  args: RouteTaskArgs,
+): Promise<RouteResult> {
     const task = await ctx.runQuery(internal.tasks.getById, { taskId: args.taskId });
     const overseer = await ctx.runQuery(internal.agents.getOverseer, {
       workspaceId: args.workspaceId,
@@ -134,14 +151,15 @@ export const routeTask = internalAction({
     });
 
     if (!assignedAgent) {
+      const reason = `No active crew lead found for ${decision.crewTag}.`;
       await ctx.runMutation(internal.tasks.failTaskInternal, {
         taskId: task._id,
-        reason: `No active crew lead found for ${decision.crewTag}.`,
+        reason,
       });
 
       return {
         status: "failed" as const,
-        reason: `No active crew lead found for ${decision.crewTag}.`,
+        reason,
       };
     }
 
@@ -151,16 +169,31 @@ export const routeTask = internalAction({
       assignedAgentId: assignedAgent._id,
     });
 
+  if (decision.crewTag === "finance") {
+    await ctx.runAction(internal.agent_runner.billing.handleTask, {
+      taskId: task._id,
+      runId,
+      workspaceId: args.workspaceId,
+    });
+  } else {
     await ctx.runAction(internal.agent_runner.support.handleTask, {
       taskId: task._id,
       runId,
       workspaceId: args.workspaceId,
     });
+  }
 
     return {
       status: "running" as const,
       assignedAgentId: assignedAgent._id,
       crewTag: decision.crewTag,
     };
+}
+
+export const routeTask = internalAction({
+  args: {
+    taskId: v.id("tasks"),
+    workspaceId: v.string(),
   },
+  handler: routeTaskHandler,
 });

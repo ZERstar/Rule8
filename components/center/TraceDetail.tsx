@@ -31,17 +31,17 @@ export function TraceDetail({
   ];
 
   return (
-    <div className="mt-1 rounded-[6px] overflow-hidden" style={{ background: "var(--color-s2)" }}>
+    <div className="overflow-hidden rounded-lg border border-[var(--color-b1)] bg-white">
       {rows.map(({ key, value }, i) => (
         <div
           key={key}
-          className="flex items-start gap-3 px-3 py-1.5"
+          className="flex items-start gap-4 px-4 py-2.5"
           style={{ borderTop: i > 0 ? "1px solid var(--color-b1)" : undefined }}
         >
-          <span className="w-24 shrink-0 font-mono text-[10px]" style={{ color: "var(--color-t3)" }}>
+          <span className="w-24 shrink-0 font-mono text-[10px] uppercase tracking-[0.12em] text-[var(--color-t3)]">
             {key}
           </span>
-          <span className="break-all font-mono text-[10px]" style={{ color: "var(--color-t2)" }}>
+          <span className="break-all font-mono text-[11px] text-foreground/85">
             {value}
           </span>
         </div>

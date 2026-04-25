@@ -3,6 +3,8 @@
 import type { ExecutiveChatMessage, RightPanelTab, CrewTag } from "@/lib/dashboard";
 import { CrewDetail } from "./CrewDetail";
 import { ExecutiveChat } from "./ExecutiveChat";
+import type { ExecutiveChatMode } from "./ModeTabs";
+import { cn } from "@/lib/utils";
 
 export function RightPanel({
   executiveIsTyping,
@@ -17,42 +19,42 @@ export function RightPanel({
   executiveIsTyping: boolean;
   executiveMessages: ExecutiveChatMessage[];
   executiveShowQuickReplies: boolean;
-  onExecutiveSend: (text: string) => void;
+  onExecutiveSend: (text: string, mode: ExecutiveChatMode) => void;
   tab: RightPanelTab;
   selectedCrew: CrewTag;
   onTabChange: (t: RightPanelTab) => void;
   onOpenCrewRoom: () => void;
 }) {
+  const tabs: { key: RightPanelTab; label: string }[] = [
+    { key: "crew", label: "Crew Detail" },
+    { key: "executive", label: "Executive" },
+  ];
+
   return (
-    <div className="flex h-full flex-col overflow-hidden" style={{ background: "var(--color-s1)" }}>
-      {/* Tab bar */}
-      <div
-        className="flex shrink-0 border-b"
-        style={{ borderColor: "var(--color-b1)", height: 40 }}
-      >
-        {(["crew", "executive"] as RightPanelTab[]).map((t) => {
-          const isActive = tab === t;
-          const label = t === "crew" ? "Crew Detail" : "Executive";
+    <div className="flex h-full flex-col overflow-hidden">
+      {/* Tab bar with gradient underline on active */}
+      <div className="flex border-b border-[var(--color-b1)]">
+        {tabs.map(({ key, label }) => {
+          const isActive = tab === key;
           return (
             <button
-              key={t}
-              className="relative flex h-full items-center px-4 font-mono text-[10px] uppercase tracking-[0.12em] transition"
-              style={{ color: isActive ? "var(--color-gold)" : "var(--color-t3)" }}
-              onClick={() => onTabChange(t)}
+              key={key}
+              type="button"
+              onClick={() => onTabChange(key)}
+              className={cn(
+                "relative flex-1 px-4 py-4 font-mono text-[10px] font-semibold uppercase tracking-[0.14em] transition-colors",
+                isActive ? "text-foreground" : "text-[var(--color-t3)] hover:text-foreground",
+              )}
             >
               {label}
               {isActive && (
-                <span
-                  className="absolute bottom-0 left-0 right-0 h-0.5"
-                  style={{ background: "var(--color-gold)" }}
-                />
+                <span className="absolute bottom-0 left-0 right-0 h-[2px] bg-gradient-to-r from-[#0052FF] to-[#4D7CFF]" />
               )}
             </button>
           );
         })}
       </div>
 
-      {/* Content */}
       <div className="min-h-0 flex-1 overflow-hidden">
         {tab === "crew" ? (
           <CrewDetail crewTag={selectedCrew} onOpenCrewRoom={onOpenCrewRoom} />

@@ -332,7 +332,7 @@ community → bg rgba(139,92,246,0.10)  text #A78BFA
 5. After 20 traces, 21st push removes oldest
 6. Stat bar shows correct counts from seeded data
 
-**Completion notes:** Mounted the trace feed into the center panel and kept the existing Convex subscription + demo mutation loop active inside the real dashboard shell.
+**Completion notes:** Mounted the trace feed into the center panel on a live Convex subscription. The demo mutation path remains opt-in for testing and no longer prunes real task traces from the workspace.
 Updated `components/center/TraceItem.tsx` to apply the `fadeSlide` animation on live inserts and a border-color transition when the LIVE state expires.
 
 ---
@@ -573,7 +573,7 @@ The UI is now split across `components/right-panel/ChatBubble.tsx`, `components/
 
 ---
 
-### US-12 — Executive Routes Inbound Support Ticket `[ ]`
+### US-12 — Executive Routes Inbound Support Ticket `[x done: 2026-04-25]`
 
 **Depends on:** All Sprint 1 complete
 
@@ -628,11 +628,11 @@ await anthropic.messages.create({
 }
 ```
 
-**Completion notes:** _(agent fills this in when done)_
+**Completion notes:** Implemented the full inbound agent path: `convex/http.ts` now registers `POST /api/webhooks/intercom`; `convex/webhooks/intercom.ts` verifies HMAC when `INTERCOM_WEBHOOK_SECRET` is present, creates the inbound task, and triggers the Executive runner; `convex/agent_runner/overseer.ts` classifies to Finance, Support, or Executive escalation and writes `overseer_route`; `convex/agent_runner/support.ts` writes `llm_call` and `resolution` then resolves the task; `lib/anthropic.ts`, `lib/agents/prompts.ts`, and `lib/agents/tools.ts` provide the server-side model wrapper, prompt builders, and tool definitions. Added `traces.listByTaskId` for verification and fixed demo-trace cleanup so fake feed traffic no longer deletes real webhook traces. Verified live against the Convex dev deployment with three payloads: billing text routed to Finance and resolved, support text routed to Support and resolved, and ambiguous policy/compliance text escalated with a warning trace.
 
 ---
 
-### US-13 — Finance Crew Handles Billing Query + Stripe `[ ]`
+### US-13 — Finance Crew Handles Billing Query + Stripe `[x done: 2026-04-25]`
 
 **Depends on:** US-12, US-18
 
@@ -659,11 +659,11 @@ lib/agents/tools.ts                     UPDATE — add stripe_lookup, stripe_ref
 4. `status: "resolved"`
 5. POST refund > $50 → `status: "escalated"`
 
-**Completion notes:** _(agent fills this in when done)_
+**Completion notes:** Added a dedicated Finance runner in `convex/agent_runner/billing.ts` and routed Finance tasks there from `convex/agent_runner/overseer.ts`. `lib/agents/tools.ts` now includes `stripe_lookup` and `stripe_refund`, and billing policy is read from `productContext` via new backend accessors in `convex/productContext.ts`. Added backend integration accessors in `convex/integrations.ts`, seeded `refund_limit_cents=5000` and disconnected provider rows in `agents.seedDemoData`, and introduced `lib/providers/stripe.ts` with live-key support plus deterministic mock fallback when no Stripe secret is configured. End-to-end verification is automated in `scripts/test-agent-system.ts` (`npm run test:agents`), which passed for three scenarios: Finance resolve with `stripe_lookup` + `stripe_refund`, Support resolve, and Finance escalation when duplicate charge amount exceeds the refund limit.
 
 ---
 
-### US-14 — Community Crew Monitors Discord `[ ]`
+### US-14 — Community Crew Monitors Discord `[x done: 2026-04-25]`
 
 **Depends on:** US-12
 
@@ -674,6 +674,9 @@ lib/agents/tools.ts                     UPDATE — add stripe_lookup, stripe_ref
 convex/webhooks/discord.ts              NEW — Ed25519 signature verify, trigger Community agent
 convex/agent_runner/community.ts        NEW
 lib/agents/tools.ts                     UPDATE — add discord_reply, discord_dm tools
+lib/agents/prompts.ts                   UPDATE — add buildCommunitySystemPrompt
+convex/http.ts                          UPDATE — register /api/webhooks/discord route
+convex/tasks.ts                         UPDATE — add createInboundDiscordTask mutation
 ```
 
 **Classification outcomes:**
@@ -692,7 +695,7 @@ lib/agents/tools.ts                     UPDATE — add discord_reply, discord_dm
 { "channel_id": "123", "content": "How do I cancel?", "author": { "id": "u1", "username": "testuser" } }
 ```
 
-**Completion notes:** _(agent fills this in when done)_
+**Completion notes:** `convex/webhooks/discord.ts` verifies Ed25519 signature via WebCrypto `crypto.subtle` when `DISCORD_PUBLIC_KEY` env var is set (skips when absent for local testing). Handles Discord ping challenge (type=1) for webhook registration. Creates task with `source: "discord"` and routes directly to community agent (no overseer round-trip needed since all Discord traffic is community-owned). `lib/agents/tools.ts` now exports `COMMUNITY_TOOLS` with `discord_reply` and `discord_dm`. `convex/agent_runner/community.ts` classifies content with a regex heuristic then makes an LLM call; violation → `discord_dm` + escalate; product question/feature request → `discord_reply` + resolve. Discord user ID stored as `discord:<id>` in `userEmail` field for episodic memory continuity.
 
 ---
 
@@ -761,7 +764,7 @@ components/evals/EvalRunBadge.tsx         NEW
 
 ---
 
-### US-17 — Episodic Memory per User `[ ]`
+### US-17 — Episodic Memory per User `[x done: 2026-04-25]`
 
 **Depends on:** US-12, US-13, US-14
 
@@ -769,11 +772,14 @@ components/evals/EvalRunBadge.tsx         NEW
 
 **Files:**
 ```
-convex/schema.ts                UPDATE — add userEmail field to tasks table
-convex/traces.ts                UPDATE — add listByUser query
-convex/agent_runner/support.ts  UPDATE — load last 5 interactions before LLM call
-convex/agent_runner/billing.ts  UPDATE — same
-convex/agent_runner/community.ts UPDATE — same
+convex/schema.ts                UPDATE — added userEmail optional field + by_workspace_and_user_email index
+convex/tasks.ts                 UPDATE — added getRecentByUserEmail internalQuery + createInboundDiscordTask
+convex/traces.ts                UPDATE — added listByUser query
+convex/webhooks/intercom.ts     UPDATE — passes userEmail to createInboundIntercomTask
+convex/webhooks/discord.ts      NEW — passes discord:<userId> as userEmail
+convex/agent_runner/support.ts  UPDATE — loads last 5 interactions before LLM call
+convex/agent_runner/billing.ts  UPDATE — same, injected into final runAgentModel userPrompt
+convex/agent_runner/community.ts NEW — includes episodic context load
 ```
 
 **Context injection:** Prior interactions go into the user message (not system prompt — to preserve prompt cache TTL).
@@ -783,7 +789,7 @@ convex/agent_runner/community.ts UPDATE — same
 2. On second query, expanded trace detail shows "Episodic context: N prior interactions"
 3. Second response text references context from first interaction
 
-**Completion notes:** _(agent fills this in when done)_
+**Completion notes:** `userEmail` added as optional to tasks schema with a new `by_workspace_and_user_email` index. `getRecentByUserEmail` is an `internalQuery` that fetches up to N prior resolved/escalated tasks for a user, excluding the current task. All three agent runners (support, billing, community) call this before the LLM call and inject the formatted history into the user prompt. A `memory_lookup` trace row is written when context is loaded so the trace expand view shows "Episodic context: N prior interactions". Context is NOT injected into the system prompt to preserve prompt cache TTL across calls. Discord user IDs are stored as `discord:<id>` so the same user gets consistent history even without an email address.
 
 ---
 
@@ -833,10 +839,10 @@ components/integrations/ProviderCard.tsx    NEW
 | US-09 | Crew Room Overlay | `[x]` | 2026-04-25 |
 | US-10 | Global Executive Bar | `[x]` | 2026-04-25 |
 | US-11 | Executive Chat Tab | `[x]` | 2026-04-25 |
-| US-12 | Executive Routes Ticket | `[ ]` | — |
-| US-13 | Finance Crew + Stripe | `[ ]` | — |
-| US-14 | Community Crew + Discord | `[ ]` | — |
+| US-12 | Executive Routes Ticket | `[x]` | 2026-04-25 |
+| US-13 | Finance Crew + Stripe | `[x]` | 2026-04-25 |
+| US-14 | Community Crew + Discord | `[x]` | 2026-04-25 |
 | US-15 | Escalation Review | `[x]` | 2026-04-25 |
 | US-16 | Prompt Editor + Eval | `[x]` | 2026-04-25 |
-| US-17 | Episodic Memory | `[ ]` | — |
+| US-17 | Episodic Memory | `[x]` | 2026-04-25 |
 | US-18 | Connect Integrations | `[x]` | 2026-04-25 |

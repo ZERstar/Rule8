@@ -116,13 +116,15 @@ export default defineSchema({
     totalCostCents: v.number(),
     latencyMs: v.optional(v.number()),
     autoResolved: v.boolean(),
+    userEmail: v.optional(v.string()),
     workspaceId: v.string(),
     createdAt: v.number(),
     completedAt: v.optional(v.number()),
   })
     .index("by_workspace_and_created_at", ["workspaceId", "createdAt"])
     .index("by_workspace_and_status", ["workspaceId", "status"])
-    .index("by_workspace_and_crew_tag", ["workspaceId", "crewTag"]),
+    .index("by_workspace_and_crew_tag", ["workspaceId", "crewTag"])
+    .index("by_workspace_and_user_email", ["workspaceId", "userEmail"]),
 
   traces: defineTable({
     runId: v.string(),

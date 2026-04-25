@@ -4,31 +4,26 @@ import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { WORKSPACE_ID } from "@/lib/constants";
 
+
 export function StatBar() {
   const stats = useQuery(api.tasks.getStats, { workspaceId: WORKSPACE_ID });
+  const statData = stats ?? { tasksToday: 0, autoResolved: 0, totalTokens: 0, escalated: 0 };
 
   const cells = [
-    { label: "Tasks today",   value: stats?.tasksToday   ?? "—" },
-    { label: "Auto-resolved", value: stats?.autoResolved ?? "—" },
-    { label: "Total tokens",  value: stats ? (stats.totalTokens / 1000).toFixed(1) + "k" : "—" },
-    { label: "Escalated",     value: stats?.escalated    ?? "—" },
+    { label: "Tasks today",   value: statData.tasksToday },
+    { label: "Auto-resolved", value: statData.autoResolved },
+    { label: "Total tokens",  value: (statData.totalTokens / 1000).toFixed(1) + "k" },
+    { label: "Escalated",     value: statData.escalated },
   ];
 
   return (
-    <div
-      className="grid grid-cols-4"
-      style={{ borderTop: "1px solid rgba(255,255,255,0.07)", height: 52, background: "var(--color-s1)" }}
-    >
-      {cells.map(({ label, value }, i) => (
-        <div
-          key={label}
-          className="flex flex-col items-center justify-center"
-          style={{ borderRight: i < 3 ? "1px solid rgba(255,255,255,0.07)" : undefined }}
-        >
-          <span className="font-semibold leading-none" style={{ fontSize: 16, color: "var(--color-t1)" }}>
+    <div className="grid grid-cols-2 divide-x divide-[var(--color-b1)] border-t border-[var(--color-b1)] bg-white sm:grid-cols-4">
+      {cells.map(({ label, value }) => (
+        <div key={label} className="flex flex-col items-center justify-center px-4 py-4">
+          <span className="text-[20px] font-semibold leading-none tracking-[-0.02em] text-foreground">
             {value}
           </span>
-          <span className="mt-1 font-mono text-[9px] uppercase tracking-[0.14em]" style={{ color: "var(--color-t3)" }}>
+          <span className="mt-2 font-mono text-[9px] uppercase tracking-[0.14em] text-[var(--color-t3)]">
             {label}
           </span>
         </div>

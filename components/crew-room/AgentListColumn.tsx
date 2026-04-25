@@ -3,9 +3,12 @@
 import { useQuery } from "convex/react";
 
 import { api } from "@/convex/_generated/api";
+import type { Doc } from "@/convex/_generated/dataModel";
 import { WORKSPACE_ID, CREW_META } from "@/lib/constants";
+
 import type { CrewTag } from "@/lib/dashboard";
 import { AgentListItem } from "@/components/right-panel/AgentListItem";
+import { SectionLabel } from "@/components/ui/section-label";
 
 export function AgentListColumn({
   crewTag,
@@ -16,30 +19,29 @@ export function AgentListColumn({
 }) {
   const meta = CREW_META[crewTag];
   const crewAgents = useQuery(api.agents.listByCrew, { workspaceId: WORKSPACE_ID, crewTag });
-  const executive = useQuery(api.agents.listByCrew, {
-    workspaceId: WORKSPACE_ID,
-    crewTag: "executive",
-  });
+  const executive = useQuery(api.agents.listByCrew, { workspaceId: WORKSPACE_ID, crewTag: "executive" });
 
-  type AgentDoc = NonNullable<typeof crewAgents>[number];
-  const execAgent = executive?.find((agent: AgentDoc) => agent.tag === "overseer");
-  const specialists = (crewAgents ?? []).filter((agent: AgentDoc) => agent.tag !== "overseer");
+  const executiveAgents: Doc<"agents">[] = executive ?? [];
+  const crewAgentList: Doc<"agents">[] = crewAgents ?? [];
+  const execAgent = executiveAgents.find((a) => a.tag === "overseer");
+  const specialists = crewAgentList.filter((a) => a.tag !== "overseer");
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
-      <div className="border-b px-4 py-3" style={{ borderColor: "var(--color-b1)" }}>
-        <p className="font-mono text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--color-t3)" }}>
-          {meta.label}
-        </p>
-        <h2 className="mt-1 text-[18px] font-semibold" style={{ color: "var(--color-t1)" }}>
+      <div className="border-b border-[var(--color-b1)] px-5 py-5">
+        <SectionLabel dot={false}>{meta.label}</SectionLabel>
+        <h3
+          className="mt-2 text-[18px] leading-[1.1] tracking-[-0.02em] text-foreground"
+          style={{ fontFamily: "var(--font-display)" }}
+        >
           Active agents
-        </h2>
+        </h3>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-3 py-3">
-        <div className="flex flex-col gap-2">
-          {execAgent ? (
-            <button className="w-full text-left" onClick={onOpenExecutive} type="button">
+      <div className="app-scroll flex-1 overflow-y-auto px-4 py-4">
+        <div className="flex flex-col gap-2.5">
+          {execAgent && (
+            <button type="button" className="w-full text-left" onClick={onOpenExecutive}>
               <AgentListItem
                 description="Cross-crew orchestration"
                 integrationNames={execAgent.integrationNames}
@@ -50,16 +52,16 @@ export function AgentListColumn({
                 workflowId="wf-2044"
               />
             </button>
-          ) : null}
+          )}
 
           {specialists.map((agent) => (
             <AgentListItem
-              key={agent._id}
+              key={"id" in agent ? agent.id : agent._id}
               description={agent.description}
               integrationNames={agent.integrationNames}
               lastAction={agent.lastAction}
               name={agent.name}
-              status={agent.status as "active" | "critical" | "done" | "idle" | "orchestrating" | "paused"}
+              status={agent.status}
             />
           ))}
         </div>

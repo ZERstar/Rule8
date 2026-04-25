@@ -121,6 +121,49 @@ export const listRecent = query({
   },
 });
 
+export const listByTaskId = query({
+  args: {
+    taskId: v.id("tasks"),
+  },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("traces")
+      .withIndex("by_task", (q) => q.eq("taskId", args.taskId))
+      .collect();
+  },
+});
+
+export const listByUser = query({
+  args: {
+    workspaceId: v.string(),
+    userEmail: v.string(),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const tasks = await ctx.db
+      .query("tasks")
+      .withIndex("by_workspace_and_user_email", (q) =>
+        q.eq("workspaceId", args.workspaceId).eq("userEmail", args.userEmail),
+      )
+      .order("desc")
+      .take(10);
+
+    const traceArrays = await Promise.all(
+      tasks.map((task) =>
+        ctx.db
+          .query("traces")
+          .withIndex("by_task", (q) => q.eq("taskId", task._id))
+          .collect(),
+      ),
+    );
+
+    return traceArrays
+      .flat()
+      .sort((a, b) => b.createdAt - a.createdAt)
+      .slice(0, args.limit ?? 50);
+  },
+});
+
 export const recordInternal = internalMutation({
   args: {
     runId: v.string(),
@@ -174,13 +217,14 @@ export const insertDemo = mutation({
       createdAt: Date.now(),
     });
 
-    const traces = await ctx.db
+    const demoTraces = (await ctx.db
       .query("traces")
       .withIndex("by_workspace_and_created_at", (q) => q.eq("workspaceId", args.workspaceId))
       .order("desc")
-      .collect();
+      .collect())
+      .filter((trace) => trace.runId.startsWith("run-live-") && trace.taskId === undefined);
 
-    for (const trace of traces.slice(20)) {
+    for (const trace of demoTraces.slice(20)) {
       await ctx.db.delete(trace._id);
     }
 

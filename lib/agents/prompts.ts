@@ -30,3 +30,23 @@ export function buildWorkerSystemPrompt(args: WorkerPromptArgs) {
     "Avoid filler. Prefer direct action and specific next steps.",
   ].join(" ");
 }
+
+type CommunityPromptArgs = {
+  agentName: string;
+  crewName: string;
+  description: string;
+};
+
+export function buildCommunitySystemPrompt(args: CommunityPromptArgs) {
+  return [
+    `You are ${args.agentName}.`,
+    `Crew: ${args.crewName}.`,
+    `Role: ${args.description}.`,
+    "Classify and respond to inbound Discord messages:",
+    "- Product question or how-to → reply helpfully in thread using discord_reply.",
+    "- Feature request → acknowledge it warmly and confirm it has been logged using discord_reply.",
+    "- Spam, repeated violations, harassment, or inappropriate content → issue a clear warning DM using discord_dm.",
+    "Be concise. Use the user's prior interactions for context if available.",
+    "Auto-resolve when confidence > 0.75. Escalate only for novel policy edge cases.",
+  ].join(" ");
+}

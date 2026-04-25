@@ -1,49 +1,25 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useQuery, useMutation } from "convex/react";
+import { api } from "@/convex/_generated/api";
+import { WORKSPACE_ID } from "@/lib/constants";
+import { InfoListCard } from "@/components/dashboard/InfoListCard";
+import { PageHeader } from "@/components/dashboard/PageHeader";
 import { SecondaryPageShell } from "@/components/dashboard/SecondaryPageShell";
+import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 type AgentKey = "support" | "billing" | "community";
 
-const AGENTS: { key: AgentKey; label: string; short: string; color: string }[] = [
-  { key: "support",   label: "Support Agent",   short: "SP", color: "#60A5FA" },
-  { key: "billing",   label: "Finance Agent",   short: "FN", color: "#34D399" },
-  { key: "community", label: "Community Agent", short: "CM", color: "#A78BFA" },
-];
-
-const DEFAULT_PROMPTS: Record<AgentKey, string> = {
-  support: `You are the Support Agent for Rule8. Resolve customer tickets with empathy and precision.
-
-PRODUCT CONTEXT: [auto-injected from productContext table]
-REFUND POLICY:   [auto-injected from productContext table]
-TONE: Friendly, concise, action-oriented.
-
-RULES:
-1. Never process refunds — escalate to Finance Crew.
-2. Legal language (lawsuit, fraud, chargeback) → escalate immediately.
-3. Always confirm the resolution at the end of the reply.
-4. Keep replies under 150 words.`,
-
-  billing: `You are the Finance Agent for Rule8. Handle billing queries using Stripe data.
-
-TOOLS: stripe_lookup, stripe_refund
-REFUND POLICY: [auto-injected from productContext table]
-
-RULES:
-1. Only initiate refunds within the policy limit.
-2. Always verify the charge with stripe_lookup before acting.
-3. Refund exceeds limit → escalate with full Stripe context attached.
-4. Log every Stripe action as a tool_call trace.`,
-
-  community: `You are the Community Agent for Rule8. Moderate Discord and Slack channels.
-
-TOOLS: discord_reply, discord_dm
-
-RULES:
-1. Product question → draft reply using productContext, post in thread.
-2. Feature request → create a task record with tag "feature_request".
-3. Violation → issue discord_dm warning. Escalate repeat offenders.
-4. Never post in the main channel — always reply in thread.`,
+const AGENTS_META: Record<AgentKey, { label: string; short: string; color: string }> = {
+  support:   { label: "Support Agent",   short: "SP", color: "#60A5FA" },
+  billing:   { label: "Finance Agent",   short: "FN", color: "#34D399" },
+  community: { label: "Community Agent", short: "CM", color: "#A78BFA" },
 };
 
 const EVAL_CASES: Record<AgentKey, { name: string; score: number; pass: boolean }[]> = {
@@ -72,233 +48,398 @@ const EVAL_CASES: Record<AgentKey, { name: string; score: number; pass: boolean 
 
 type EvalState = "idle" | "running" | "done";
 
+function StudioMetric({
+  label,
+  value,
+  hint,
+  accent,
+}: {
+  label: string;
+  value: string;
+  hint: string;
+  accent: string;
+}) {
+  return (
+    <div className="rounded-[24px] border border-border/70 bg-white/74 px-4 py-4 shadow-[0_14px_34px_rgba(28,39,49,0.05)]">
+      <div className="h-1.5 w-12 rounded-full" style={{ background: accent }} />
+      <p className="mt-3 font-mono text-[9px] uppercase tracking-[0.18em] text-muted-foreground">{label}</p>
+      <p className="mt-3 text-[18px] font-semibold tracking-[-0.03em] text-foreground">{value}</p>
+      <p className="mt-2 text-[12px] leading-6 text-muted-foreground">{hint}</p>
+    </div>
+  );
+}
+
 export default function PromptsPage() {
-  const [agent,      setAgent]     = useState<AgentKey>("support");
-  const [prompt,     setPrompt]    = useState(DEFAULT_PROMPTS.support);
+  const allAgents = useQuery(api.agents.list, { workspaceId: WORKSPACE_ID });
+  const updatePrompt = useMutation(api.agents.updatePrompt);
+
+  const [agentTag,   setAgentTag]  = useState<AgentKey>("support");
+  const [prompt,     setPrompt]    = useState("");
   const [note,       setNote]      = useState("");
-  const [version,    setVersion]   = useState(1);
   const [evalState,  setEvalState] = useState<EvalState>("idle");
 
+  const activeAgent = allAgents?.find((a) => a.tag === agentTag);
+  const version = activeAgent?.promptVersion ?? 1;
+
+  useEffect(() => {
+    if (activeAgent?.systemPrompt && evalState === "idle" && prompt === "") {
+      setPrompt(activeAgent.systemPrompt);
+    }
+  }, [activeAgent, evalState, prompt]);
+
   const selectAgent = (key: AgentKey) => {
-    setAgent(key); setPrompt(DEFAULT_PROMPTS[key]);
-    setEvalState("idle"); setNote("");
+    setAgentTag(key); 
+    const newAgent = allAgents?.find((a) => a.tag === key);
+    if (newAgent) setPrompt(newAgent.systemPrompt || "");
+    setEvalState("idle"); 
+    setNote("");
   };
 
-  const save = () => {
-    if (!prompt.trim()) return;
-    setVersion(v => v + 1); setEvalState("running");
-    setTimeout(() => setEvalState("done"), 2600);
+  const save = async () => {
+    if (!prompt.trim() || !activeAgent) return;
+    setEvalState("running");
+    
+    try {
+      await updatePrompt({
+        agentId: activeAgent._id,
+        systemPrompt: prompt,
+        changeNote: note.trim() || undefined,
+      });
+      setTimeout(() => setEvalState("done"), 2600);
+    } catch (err) {
+      console.error("Failed to save prompt:", err);
+      setEvalState("idle");
+    }
   };
 
-  const cases    = EVAL_CASES[agent];
+  const cases    = EVAL_CASES[agentTag];
   const passed   = cases.filter(c => c.pass).length;
   const passRate = Math.round((passed / cases.length) * 100);
   const isBad    = evalState === "done" && passRate < 80;
-  const meta     = AGENTS.find(a => a.key === agent)!;
+  const meta     = AGENTS_META[agentTag];
+
+  if (!allAgents) return null;
 
   return (
     <SecondaryPageShell>
-      {/* Header */}
-      <div className="mb-8 border-b pb-6" style={{ borderColor: "var(--color-b1)" }}>
-        <p className="font-mono text-[10px] uppercase tracking-[0.20em]" style={{ color: "var(--color-t3)" }}>
-          · Prompt Studio
-        </p>
-        <h1 className="mt-2 text-[28px] font-semibold tracking-[-0.02em]" style={{ color: "var(--color-t1)" }}>
-          Agent system prompts
-        </h1>
-        <p className="mt-1 text-[13px] leading-[1.65]" style={{ color: "var(--color-t2)" }}>
-          Edit any agent's system prompt. Saving auto-replays all eval cases — if pass rate drops over 5% the version is blocked.
-        </p>
-      </div>
-
-      <div className="grid gap-6 lg:grid-cols-[1fr_300px]">
-        {/* ── Left: Editor ── */}
-        <div className="space-y-4">
-          {/* Agent tabs */}
-          <div
-            className="grid grid-cols-3 gap-px overflow-hidden rounded-[8px]"
-            style={{ background: "var(--color-b1)" }}
-          >
-            {AGENTS.map(({ key, label, short, color }) => (
-              <button
-                key={key}
-                className="flex items-center justify-center gap-2.5 py-2.5 font-mono text-[10px] uppercase tracking-[0.10em] transition"
-                style={{
-                  background: agent === key ? "var(--color-s2)" : "var(--color-s1)",
-                  color: agent === key ? color : "var(--color-t3)",
-                  borderBottom: agent === key ? `2px solid ${color}` : "2px solid transparent",
-                }}
-                onClick={() => selectAgent(key)}
-              >
-                <span
-                  className="flex h-5 w-5 items-center justify-center rounded-[3px] font-mono text-[9px] font-bold text-black"
-                  style={{ background: color }}
-                >
-                  {short}
-                </span>
-                {label}
-              </button>
-            ))}
+      <PageHeader
+        eyebrow="· Prompt Studio"
+        title="Agent system prompts"
+        description="Edit any agent's system prompt. Saving auto-replays all eval cases — if pass rate drops over 5% the version is blocked."
+        children={
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div className="rounded-[22px] border border-border/70 bg-white/74 px-4 py-4">
+              <p className="font-mono text-[9px] uppercase tracking-[0.18em] text-muted-foreground">Active Crew</p>
+              <p className="mt-3 text-[16px] font-semibold tracking-[-0.03em] text-foreground">{meta.label}</p>
+            </div>
+            <div className="rounded-[22px] border border-border/70 bg-white/74 px-4 py-4">
+              <p className="font-mono text-[9px] uppercase tracking-[0.18em] text-muted-foreground">Eval policy</p>
+              <p className="mt-3 text-[16px] font-semibold tracking-[-0.03em] text-foreground">Replay on save</p>
+            </div>
+            <div className="rounded-[22px] border border-border/70 bg-white/74 px-4 py-4">
+              <p className="font-mono text-[9px] uppercase tracking-[0.18em] text-muted-foreground">Version</p>
+              <p className="mt-3 text-[16px] font-semibold tracking-[-0.03em] text-foreground">v{version}</p>
+            </div>
           </div>
+        }
+      />
 
-          {/* Prompt editor */}
-          <div
-            className="overflow-hidden rounded-[8px] border"
-            style={{ borderColor: "var(--color-b2)", background: "var(--color-s1)" }}
-          >
-            <div
-              className="flex items-center justify-between border-b px-4 py-2.5"
-              style={{ borderColor: "var(--color-b1)" }}
-            >
-              <div className="flex items-center gap-2">
-                <span className="font-mono text-[11px] font-semibold" style={{ color: "var(--color-t1)" }}>
-                  System Prompt
-                </span>
-                <span
-                  className="rounded-[3px] px-1.5 py-0.5 font-mono text-[9px]"
-                  style={{ background: "rgba(200,151,42,0.10)", color: "var(--color-gold)" }}
-                >
-                  v{version}
-                </span>
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.08fr)_360px]">
+        <div className="space-y-6">
+          <Card className="bg-card">
+            <CardHeader className="border-b border-border/70 px-6 py-6">
+              <div>
+                <p className="app-kicker">Crew prompt focus</p>
+                <CardTitle className="mt-3 text-[26px] tracking-[-0.04em]">Tune each operating crew independently</CardTitle>
+                <p className="mt-3 max-w-2xl text-[14px] leading-[1.8] text-muted-foreground">
+                  Each agent keeps its own system instructions, evaluation cases, and version trail. Swap crews, edit safely, and ship prompt changes with guardrails.
+                </p>
               </div>
-              <span className="font-mono text-[9px]" style={{ color: "var(--color-t3)" }}>
-                {prompt.length} chars
-              </span>
-            </div>
-            <textarea
-              className="w-full resize-none bg-transparent px-4 py-4 font-mono text-[12px] leading-[1.75] outline-none"
-              style={{ color: "var(--color-t1)", minHeight: 280 }}
-              value={prompt}
-              spellCheck={false}
-              onChange={e => { setPrompt(e.target.value); setEvalState("idle"); }}
-            />
-          </div>
+            </CardHeader>
+            <CardContent className="space-y-5 px-6 pb-6">
+              <Tabs value={agentTag} onValueChange={(v) => selectAgent(v as AgentKey)} className="w-full">
+                <TabsList className="grid h-auto w-full grid-cols-1 gap-2 rounded-[28px] border border-border/70 bg-white/58 p-2 md:grid-cols-3">
+                  {(Object.keys(AGENTS_META) as AgentKey[]).map((key) => {
+                    const active = agentTag === key;
+                    const { label, short, color } = AGENTS_META[key];
+                    return (
+                      <TabsTrigger
+                        key={key}
+                        value={key}
+                        className="flex items-center justify-start gap-3 rounded-[22px] border border-transparent px-4 py-3 font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground transition-all data-[state=active]:border-transparent data-[state=active]:bg-foreground data-[state=active]:text-background"
+                      >
+                        <span
+                          className="flex h-8 w-8 items-center justify-center rounded-full font-mono text-[10px] font-bold text-black shadow-[inset_0_1px_0_rgba(255,255,255,0.45)]"
+                          style={{ background: color }}
+                        >
+                          {short}
+                        </span>
+                        <span className="flex min-w-0 flex-1 items-center justify-between gap-3">
+                          <span className="truncate">{label}</span>
+                          <span
+                            className="hidden h-2.5 w-2.5 rounded-full md:block"
+                            style={{ background: active ? "#ffffff" : color, opacity: active ? 0.92 : 0.8 }}
+                          />
+                        </span>
+                      </TabsTrigger>
+                    );
+                  })}
+                </TabsList>
+              </Tabs>
 
-          {/* Save section */}
-          <div
-            className="overflow-hidden rounded-[8px] border"
-            style={{ borderColor: "var(--color-b2)", background: "var(--color-s1)" }}
-          >
-            <div className="p-4">
-              <p className="mb-2 font-mono text-[9px] uppercase tracking-[0.16em]" style={{ color: "var(--color-t3)" }}>
-                Change note (optional)
-              </p>
-              <input
-                className="h-9 w-full rounded-[6px] border bg-transparent px-3 text-[12px] outline-none transition"
-                style={{ borderColor: "var(--color-b2)", color: "var(--color-t1)" }}
-                placeholder="e.g. Tighten escalation threshold for legal language"
-                value={note}
-                onChange={e => setNote(e.target.value)}
-                onFocus={e => (e.currentTarget.style.borderColor = "rgba(200,151,42,0.40)")}
-                onBlur={e  => (e.currentTarget.style.borderColor = "var(--color-b2)")}
+              <div className="grid gap-3 md:grid-cols-3">
+                <StudioMetric
+                  label="Primary role"
+                  value={meta.label}
+                  hint="Dedicated system behavior and routing rules."
+                  accent={meta.color}
+                />
+                <StudioMetric
+                  label="Eval cases"
+                  value={`${cases.length} replayed`}
+                  hint="All cases re-run every time you save."
+                  accent="linear-gradient(135deg,#7bc7ff_0%,#4d7cf0_100%)"
+                />
+                <StudioMetric
+                  label="Release gate"
+                  value="80% minimum"
+                  hint="Low-performing versions stay blocked."
+                  accent="linear-gradient(135deg,#ffb27a_0%,#f2763d_100%)"
+                />
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-card">
+            <CardHeader className="flex flex-col gap-4 border-b border-border/70 px-6 py-6 lg:flex-row lg:items-end lg:justify-between">
+              <div>
+                <p className="app-kicker">System prompt</p>
+                <CardTitle className="mt-3 text-[28px] tracking-[-0.04em]">Core instruction set</CardTitle>
+                <p className="mt-3 max-w-2xl text-[14px] leading-[1.8] text-muted-foreground">
+                  This is the operating prompt injected before runtime context. Keep it specific, enforce routing rules, and avoid accidental scope bleed across crews.
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge variant="secondary" className="rounded-full bg-gold-a12 px-3 py-1.5 font-mono text-[9px] uppercase tracking-[0.16em] text-gold">
+                  v{version}
+                </Badge>
+                <Badge variant="outline" className="rounded-full border-border/70 bg-white/72 px-3 py-1.5 font-mono text-[9px] uppercase tracking-[0.16em] text-muted-foreground">
+                  {prompt.length} chars
+                </Badge>
+              </div>
+            </CardHeader>
+            <CardContent className="p-0">
+              <Textarea
+                className="min-h-[460px] w-full resize-none border-0 bg-transparent px-6 py-6 font-mono text-[12px] leading-[1.9] text-foreground focus-visible:ring-0"
+                value={prompt}
+                spellCheck={false}
+                onChange={e => { setPrompt(e.target.value); setEvalState("idle"); }}
               />
-            </div>
-            <div className="border-t px-4 pb-4" style={{ borderColor: "var(--color-b1)" }}>
-              <button
-                className="mt-3 w-full rounded-[6px] py-2.5 font-mono text-[11px] font-semibold text-black transition"
+            </CardContent>
+          </Card>
+
+          <Card className="bg-card">
+            <CardHeader className="border-b border-border/70 px-6 py-6">
+              <div>
+                <p className="app-kicker">Release note</p>
+                <CardTitle className="mt-3 text-[24px] tracking-[-0.04em]">Document the prompt change before shipping</CardTitle>
+              </div>
+            </CardHeader>
+            <CardContent className="grid gap-6 px-6 py-6 lg:grid-cols-[minmax(0,1fr)_260px]">
+              <div>
+                <p className="mb-3 font-mono text-[9px] uppercase tracking-[0.18em] text-muted-foreground">
+                  Change note
+                </p>
+                <Input
+                  className="h-12 w-full bg-white/74 px-4 text-[13px] text-foreground"
+                  placeholder="e.g. Tighten escalation threshold for legal language"
+                  value={note}
+                  onChange={e => setNote(e.target.value)}
+                />
+              </div>
+              <div className="rounded-[24px] border border-border/70 bg-white/62 px-4 py-4">
+                <p className="font-mono text-[9px] uppercase tracking-[0.18em] text-muted-foreground">Save behavior</p>
+                <p className="mt-3 text-[13px] leading-6 text-muted-foreground">
+                  Saving creates a new version and immediately runs the attached eval suite for this crew.
+                </p>
+              </div>
+            </CardContent>
+            <CardFooter className="flex flex-col items-start justify-between gap-4 px-6 py-5 sm:flex-row sm:items-center">
+              <p className="max-w-xl text-[13px] leading-6 text-muted-foreground">
+                If pass rate drops below the release threshold, the version stays blocked until the prompt is corrected.
+              </p>
+              <Button
+                className="h-12 w-full px-5 font-mono text-[11px] font-semibold uppercase tracking-[0.16em] text-black sm:w-auto"
                 style={{ background: evalState === "running" ? "rgba(200,151,42,0.40)" : "var(--color-gold)" }}
-                disabled={evalState === "running"}
+                disabled={evalState === "running" || !activeAgent}
                 onClick={save}
               >
-                {evalState === "running" ? "Running evals…" : "Save + Run Eval"}
-              </button>
-            </div>
-          </div>
+                {evalState === "running" ? "Running evals…" : "Save + run eval"}
+              </Button>
+            </CardFooter>
+          </Card>
         </div>
 
-        {/* ── Right: Eval panel ── */}
-        <div className="space-y-3">
-          {/* Pass rate */}
-          <div
-            className="rounded-[8px] border p-4"
-            style={{
-              borderColor: isBad ? "rgba(239,68,68,0.28)" : "var(--color-b2)",
-              background: "var(--color-s1)",
-            }}
+        <div className="space-y-6">
+          <Card
+            className="overflow-hidden bg-card transition-colors"
+            style={{ borderColor: isBad ? "rgba(239,68,68,0.28)" : "var(--color-b2)" }}
           >
-            <p className="font-mono text-[9px] uppercase tracking-[0.16em]" style={{ color: "var(--color-t3)" }}>
-              Pass Rate — {meta.label}
-            </p>
-            {evalState === "idle" && (
-              <p className="mt-2 text-[32px] font-semibold leading-none" style={{ color: "var(--color-t3)" }}>—</p>
-            )}
-            {evalState === "running" && (
-              <div className="mt-2 flex items-center gap-2">
-                <span className="h-2.5 w-2.5 rounded-full"
-                  style={{ background: "var(--color-gold)", animation: "pulse-gold 1s ease-in-out infinite" }} />
-                <span className="font-mono text-[11px]" style={{ color: "var(--color-gold)" }}>
-                  Running {cases.length} cases…
-                </span>
-              </div>
-            )}
-            {evalState === "done" && (
-              <>
-                <p className="mt-2 text-[32px] font-semibold leading-none"
-                  style={{ color: passRate >= 80 ? "var(--color-green)" : "var(--color-red)" }}>
-                  {passRate}%
-                </p>
-                <p className="mt-1 font-mono text-[10px]" style={{ color: "var(--color-t3)" }}>
-                  {passed} / {cases.length} passed
-                </p>
-                {isBad && (
-                  <p className="mt-2 font-mono text-[10px]" style={{ color: "var(--color-red)" }}>
-                    Below 80% — version blocked.
-                  </p>
-                )}
-              </>
-            )}
-          </div>
+            <CardContent className="relative px-6 py-6">
+              <div
+                className="pointer-events-none absolute inset-x-0 top-0 h-28 opacity-80"
+                style={{
+                  background: isBad
+                    ? "linear-gradient(180deg, rgba(216,95,75,0.16), transparent)"
+                    : `linear-gradient(180deg, ${meta.color}22, transparent)`,
+                }}
+              />
+              <div className="relative">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="app-kicker">Eval gate</p>
+                    <h3 className="mt-3 text-[24px] font-semibold tracking-[-0.04em] text-foreground">
+                      {meta.label} release score
+                    </h3>
+                  </div>
+                  <Badge
+                    variant="outline"
+                    className="rounded-full border-border/70 bg-white/76 px-3 py-1.5 font-mono text-[9px] uppercase tracking-[0.16em] text-muted-foreground"
+                  >
+                    {cases.length} cases
+                  </Badge>
+                </div>
 
-          {/* Eval cases */}
-          <div className="overflow-hidden rounded-[8px] border" style={{ borderColor: "var(--color-b2)", background: "var(--color-s1)" }}>
-            <div className="border-b px-4 py-2.5" style={{ borderColor: "var(--color-b1)" }}>
-              <p className="font-mono text-[9px] uppercase tracking-[0.16em]" style={{ color: "var(--color-t3)" }}>
-                Eval Cases
-              </p>
-            </div>
-            {cases.map((c, i) => (
-              <div key={c.name} className="flex items-center justify-between px-4 py-2.5"
-                style={{ borderTop: i > 0 ? "1px solid var(--color-b1)" : undefined }}>
-                <p className="text-[11px] leading-snug"
-                  style={{ color: evalState === "done" ? "var(--color-t1)" : "var(--color-t3)" }}>
-                  {c.name}
-                </p>
+                {evalState === "idle" && (
+                  <>
+                    <p className="mt-8 text-[48px] font-semibold leading-none tracking-[-0.06em] text-foreground/40">—</p>
+                    <p className="mt-3 text-[13px] leading-6 text-muted-foreground">
+                      Save the prompt to replay the full suite and generate a release decision.
+                    </p>
+                  </>
+                )}
+
+                {evalState === "running" && (
+                  <div className="mt-8 rounded-[22px] border border-border/70 bg-white/70 px-4 py-4">
+                    <div className="flex items-center gap-3">
+                      <span className="h-2.5 w-2.5 rounded-full bg-gold"
+                        style={{ animation: "pulse-gold 1s ease-in-out infinite" }} />
+                      <span className="font-mono text-[11px] uppercase tracking-[0.16em] text-gold">
+                        Running {cases.length} cases
+                      </span>
+                    </div>
+                    <p className="mt-3 text-[13px] leading-6 text-muted-foreground">
+                      Replaying the stored evaluation scenarios against the latest system prompt.
+                    </p>
+                  </div>
+                )}
+
+                {evalState === "done" && (
+                  <>
+                    <p
+                      className="mt-8 text-[52px] font-semibold leading-none tracking-[-0.06em]"
+                      style={{ color: passRate >= 80 ? "var(--color-green)" : "var(--color-red)" }}
+                    >
+                      {passRate}%
+                    </p>
+                    <div className="mt-4 flex flex-wrap items-center gap-2">
+                      <Badge
+                        variant="outline"
+                        className="rounded-full border-transparent px-3 py-1.5 font-mono text-[9px] uppercase tracking-[0.16em]"
+                        style={{
+                          background: passRate >= 80 ? "rgba(34,197,94,0.10)" : "rgba(239,68,68,0.10)",
+                          color: passRate >= 80 ? "var(--color-green)" : "var(--color-red)",
+                        }}
+                      >
+                        {passRate >= 80 ? "Ready to ship" : "Blocked"}
+                      </Badge>
+                      <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
+                        {passed} / {cases.length} passed
+                      </span>
+                    </div>
+                    <p className="mt-4 text-[13px] leading-6 text-muted-foreground">
+                      {isBad
+                        ? "This version remains blocked until the failing cases are corrected."
+                        : "The prompt cleared the minimum threshold and can be promoted."}
+                    </p>
+                  </>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
+          <InfoListCard
+            title="Eval Cases"
+            description="Stored scenarios used to validate routing, policy handling, and response quality for the active crew."
+            items={cases}
+            renderItem={(c, i) => (
+              <div
+                key={c.name}
+                className="flex items-center justify-between gap-4 px-5 py-4"
+                style={{ borderTop: i > 0 ? "1px solid var(--color-b1)" : undefined }}
+              >
+                <div className="min-w-0">
+                  <p
+                    className="text-[13px] leading-6"
+                    style={{ color: evalState === "done" ? "var(--color-t1)" : "var(--color-t3)" }}
+                  >
+                    {c.name}
+                  </p>
+                </div>
                 {evalState === "done" ? (
-                  <div className="flex shrink-0 items-center gap-1.5">
-                    <span className="font-mono text-[9px]" style={{ color: "var(--color-t3)" }}>{c.score}%</span>
-                    <span className="rounded-full px-1.5 py-0.5 font-mono text-[8px]"
-                      style={{ background: c.pass ? "rgba(34,197,94,0.10)" : "rgba(239,68,68,0.10)", color: c.pass ? "var(--color-green)" : "var(--color-red)" }}>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">{c.score}%</span>
+                    <Badge
+                      variant="outline"
+                      className="rounded-full border-transparent px-2.5 py-1 font-mono text-[8px] uppercase tracking-[0.14em]"
+                      style={{
+                        background: c.pass ? "rgba(34,197,94,0.10)" : "rgba(239,68,68,0.10)",
+                        color: c.pass ? "var(--color-green)" : "var(--color-red)",
+                      }}
+                    >
                       {c.pass ? "Pass" : "Fail"}
-                    </span>
+                    </Badge>
                   </div>
                 ) : (
-                  <span className="font-mono text-[9px]" style={{ color: "var(--color-t3)" }}>—</span>
+                  <span className="font-mono text-[9px] text-muted-foreground">Queued</span>
                 )}
               </div>
-            ))}
-          </div>
+            )}
+          />
 
-          {/* Version history */}
-          <div className="overflow-hidden rounded-[8px] border" style={{ borderColor: "var(--color-b2)", background: "var(--color-s1)" }}>
-            <div className="border-b px-4 py-2.5" style={{ borderColor: "var(--color-b1)" }}>
-              <p className="font-mono text-[9px] uppercase tracking-[0.16em]" style={{ color: "var(--color-t3)" }}>Version History</p>
-            </div>
-            {[{ v: version, label: "Just now", active: true }, { v: version - 1, label: "2d ago", active: false }]
-              .filter(r => r.v > 0)
-              .map((r, i) => (
-                <div key={r.v} className="flex items-center justify-between px-4 py-2.5"
-                  style={{ borderTop: i > 0 ? "1px solid var(--color-b1)" : undefined }}>
-                  <div className="flex items-center gap-2">
-                    <span className="font-mono text-[11px] font-semibold" style={{ color: "var(--color-t1)" }}>v{r.v}</span>
-                    {r.active && (
-                      <span className="rounded-[3px] px-1.5 py-0.5 font-mono text-[8px]"
-                        style={{ background: "rgba(200,151,42,0.10)", color: "var(--color-gold)" }}>Active</span>
-                    )}
-                  </div>
-                  <span className="font-mono text-[10px]" style={{ color: "var(--color-t3)" }}>{r.label}</span>
+          <InfoListCard
+            title="Version History"
+            description="Latest prompt versions for the selected crew. New saves append to this trail automatically."
+            action={
+              <Badge variant="secondary" className="rounded-full bg-gold-a12 px-2.5 py-1 font-mono text-[8px] uppercase tracking-[0.14em] text-gold">
+                Auto replay
+              </Badge>
+            }
+            items={[
+              { v: version, label: "Just now", active: true },
+              { v: version - 1, label: "2d ago", active: false },
+            ].filter((r) => r.v > 0)}
+            renderItem={(r, i) => (
+              <div
+                key={r.v}
+                className="flex items-center justify-between gap-4 px-5 py-4"
+                style={{ borderTop: i > 0 ? "1px solid var(--color-b1)" : undefined }}
+              >
+                <div className="flex items-center gap-2">
+                  <span className="font-mono text-[11px] font-semibold text-foreground">v{r.v}</span>
+                  {r.active && (
+                    <Badge
+                      variant="secondary"
+                      className="rounded-full bg-gold-a12 px-2 py-1 font-mono text-[8px] uppercase tracking-[0.14em] text-gold"
+                    >
+                      Active
+                    </Badge>
+                  )}
                 </div>
-              ))}
-          </div>
+                <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">{r.label}</span>
+              </div>
+            )}
+          />
         </div>
       </div>
     </SecondaryPageShell>

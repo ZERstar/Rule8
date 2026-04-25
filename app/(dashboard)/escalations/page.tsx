@@ -1,18 +1,31 @@
 "use client";
 
 import { useMutation, useQuery } from "convex/react";
+
 import { api } from "@/convex/_generated/api";
 import type { Doc, Id } from "@/convex/_generated/dataModel";
-import { WORKSPACE_ID, CREW_META } from "@/lib/constants";
+import { PageHeader } from "@/components/dashboard/PageHeader";
 import { SecondaryPageShell } from "@/components/dashboard/SecondaryPageShell";
+import { StatStrip } from "@/components/dashboard/StatStrip";
+import { Button } from "@/components/ui/button";
+import { StatusTag } from "@/components/tokens/StatusTag";
+import { CREW_META, WORKSPACE_ID } from "@/lib/constants";
+import { Check, X } from "lucide-react";
 
 const SOURCE_LABEL: Record<string, string> = {
-  intercom: "Intercom", discord: "Discord", stripe: "Stripe",
-  slack: "Slack", crisp: "Crisp", manual: "Manual",
+  intercom: "Intercom",
+  discord: "Discord",
+  stripe: "Stripe",
+  slack: "Slack",
+  crisp: "Crisp",
+  manual: "Manual",
 };
 
 const CREW_COLOR: Record<string, string> = {
-  finance: "#34D399", support: "#60A5FA", community: "#A78BFA", executive: "#C8972A",
+  finance: "#14B8A6",
+  support: "#4D7CFF",
+  community: "#8B5CF6",
+  executive: "#0052FF",
 };
 
 function timeAgo(ts: number) {
@@ -24,161 +37,240 @@ function timeAgo(ts: number) {
 
 export default function EscalationsPage() {
   const tasksQuery = useQuery(api.tasks.listEscalated, { workspaceId: WORKSPACE_ID });
-  const resolve    = useMutation(api.tasks.resolveEscalation);
+  const resolve = useMutation(api.tasks.resolveEscalation);
   const tasks: Doc<"tasks">[] | undefined = tasksQuery;
-  const totalCost  = (tasks ?? []).reduce((s, t) => s + (t.totalCostCents ?? 0), 0);
+  const totalCost = (tasks ?? []).reduce((sum, t) => sum + (t.totalCostCents ?? 0), 0);
+  const crewCounts = (tasks ?? []).reduce<Record<string, number>>((acc, t) => {
+    acc[t.crewTag] = (acc[t.crewTag] ?? 0) + 1;
+    return acc;
+  }, {});
 
   return (
     <SecondaryPageShell>
-      {/* Page header */}
-      <div className="mb-8 border-b pb-6" style={{ borderColor: "var(--color-b1)" }}>
-        <p className="font-mono text-[10px] uppercase tracking-[0.20em]" style={{ color: "var(--color-amber)" }}>
-          · Escalation Queue
-        </p>
-        <h1 className="mt-2 text-[28px] font-semibold tracking-[-0.02em]" style={{ color: "var(--color-t1)" }}>
-          Items requiring your review
-        </h1>
-        <p className="mt-1 text-[13px] leading-[1.65]" style={{ color: "var(--color-t2)" }}>
-          Tasks the agents flagged as outside operating policy. Approve or dismiss to close the loop.
-        </p>
-      </div>
+      <PageHeader
+        eyebrow="Escalation Queue"
+        title="Items requiring your review"
+        highlight="your review"
+        description="Tasks the agents flagged as outside operating policy. Approve or dismiss to close the loop."
+      />
 
-      {/* Stat strip — PDF style */}
-      <div className="mb-8 grid grid-cols-3 gap-px" style={{ background: "var(--color-b1)" }}>
-        {[
-          { label: "OPEN ESCALATIONS",  value: tasks?.length          ?? "—", sub: "Pending review"      },
-          { label: "TOTAL COST IMPACT", value: tasks ? `$${(totalCost / 100).toFixed(2)}` : "—", sub: "Across flagged tasks" },
-          { label: "OLDEST ITEM",       value: tasks?.length ? timeAgo(Math.min(...tasks.map(t => t.createdAt))) : "—", sub: "Since escalation"    },
-        ].map(({ label, value, sub }) => (
-          <div key={label} className="px-5 py-4" style={{ background: "var(--color-s1)" }}>
-            <p className="font-mono text-[9px] uppercase tracking-[0.18em]" style={{ color: "var(--color-t3)" }}>
-              {label}
-            </p>
-            <p className="mt-2 text-[28px] font-semibold leading-none tracking-[-0.02em]" style={{ color: "var(--color-t1)" }}>
-              {value}
-            </p>
-            <p className="mt-1 font-mono text-[10px]" style={{ color: "var(--color-t3)" }}>{sub}</p>
-          </div>
-        ))}
-      </div>
+      <StatStrip
+        items={[
+          { label: "Open escalations", value: tasks?.length ?? "—", sub: "Pending review" },
+          { label: "Total cost impact", value: tasks ? `$${(totalCost / 100).toFixed(2)}` : "—", sub: "Across flagged tasks" },
+          {
+            label: "Oldest item",
+            value: tasks?.length ? timeAgo(Math.min(...tasks.map((t) => t.createdAt))) : "—",
+            sub: "Since escalation",
+          },
+        ]}
+      />
 
-      {/* List */}
-      {!tasks ? (
-        <div className="space-y-2">
-          {[1, 2].map(i => (
-            <div key={i} className="h-[100px] rounded-[8px]"
-              style={{ background: "var(--color-s1)", border: "1px solid var(--color-b1)", animation: "pulse 2s infinite" }} />
-          ))}
-        </div>
-      ) : tasks.length === 0 ? (
-        <div
-          className="flex flex-col items-center justify-center rounded-[8px] border py-16"
-          style={{ borderColor: "var(--color-b1)", background: "var(--color-s1)" }}
-        >
-          <div
-            className="mb-3 flex h-12 w-12 items-center justify-center rounded-full"
-            style={{ background: "rgba(34,197,94,0.10)" }}
-          >
-            <svg width="22" height="22" fill="none" viewBox="0 0 24 24">
-              <path d="M5 13l4 4L19 7" stroke="#22C55E" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </div>
-          <p className="text-[14px] font-semibold" style={{ color: "var(--color-t1)" }}>Queue is clear</p>
-          <p className="mt-1 font-mono text-[10px]" style={{ color: "var(--color-t3)" }}>
-            All crews operating within policy.
-          </p>
-        </div>
-      ) : (
-        <div className="space-y-2">
-          {tasks.map((task: Doc<"tasks">) => {
-            const crew  = CREW_META[task.crewTag as keyof typeof CREW_META];
-            const color = CREW_COLOR[task.crewTag] ?? "var(--color-t2)";
-            return (
-              <div
-                key={task._id}
-                className="rounded-[8px] border"
-                style={{
-                  borderColor: "var(--color-b1)",
-                  background: "var(--color-s1)",
-                  borderLeft: "3px solid var(--color-amber)",
-                }}
-              >
-                <div className="flex items-start gap-4 p-4">
-                  <div className="min-w-0 flex-1">
-                    {/* Badge row */}
-                    <div className="mb-2.5 flex flex-wrap items-center gap-1.5">
-                      <span className="rounded-[3px] px-2 py-0.5 font-mono text-[9px] uppercase tracking-[0.10em]"
-                        style={{ background: "rgba(217,119,6,0.12)", color: "var(--color-amber)" }}>
-                        Escalated
-                      </span>
-                      {crew && (
-                        <span className="rounded-[3px] px-2 py-0.5 font-mono text-[9px]"
-                          style={{ background: `${color}14`, color }}>
-                          {crew.icon} {crew.label}
-                        </span>
-                      )}
-                      <span className="rounded-[3px] px-2 py-0.5 font-mono text-[9px]"
-                        style={{ background: "var(--color-s2)", color: "var(--color-t3)" }}>
-                        {SOURCE_LABEL[task.source] ?? task.source}
-                      </span>
-                      <span className="ml-auto font-mono text-[9px]" style={{ color: "var(--color-t3)" }}>
-                        {timeAgo(task.createdAt)}
-                      </span>
-                    </div>
-
-                    {/* Summary */}
-                    <p className="text-[13px] font-medium leading-snug" style={{ color: "var(--color-t1)" }}>
-                      {task.summary}
-                    </p>
-
-                    {/* Reason */}
-                    {task.escalationReason && (
-                      <div className="mt-2.5 rounded-[6px] border-l-2 pl-3"
-                        style={{ borderColor: "var(--color-amber)" }}>
-                        <p className="font-mono text-[9px] uppercase tracking-[0.12em]" style={{ color: "var(--color-amber)" }}>
-                          Reason flagged
-                        </p>
-                        <p className="mt-0.5 text-[12px] leading-snug" style={{ color: "var(--color-t2)" }}>
-                          {task.escalationReason}
-                        </p>
-                      </div>
-                    )}
-
-                    {/* Metrics */}
-                    <div className="mt-2.5 flex gap-4 font-mono text-[10px]" style={{ color: "var(--color-t3)" }}>
-                      <span>{(task.totalTokens ?? 0).toLocaleString()} tok</span>
-                      <span>${((task.totalCostCents ?? 0) / 100).toFixed(4)}</span>
-                      {task.latencyMs && <span>{task.latencyMs.toLocaleString()}ms</span>}
-                    </div>
-                  </div>
-
-                  {/* Actions */}
-                  <div className="flex shrink-0 flex-col gap-1.5 pt-0.5">
-                    <button
-                      className="rounded-[6px] px-3 py-1.5 font-mono text-[10px] font-semibold text-black transition"
-                      style={{ background: "var(--color-gold)" }}
-                      onMouseEnter={e => (e.currentTarget.style.background = "var(--color-gold-l)")}
-                      onMouseLeave={e => (e.currentTarget.style.background = "var(--color-gold)")}
-                      onClick={() => void resolve({ taskId: task._id as Id<"tasks">, resolution: "Approved by founder" })}
-                    >
-                      Approve
-                    </button>
-                    <button
-                      className="rounded-[6px] border px-3 py-1.5 font-mono text-[10px] transition"
-                      style={{ borderColor: "var(--color-b2)", color: "var(--color-t3)" }}
-                      onMouseEnter={e => { e.currentTarget.style.borderColor = "var(--color-red)"; e.currentTarget.style.color = "var(--color-red)"; }}
-                      onMouseLeave={e => { e.currentTarget.style.borderColor = "var(--color-b2)"; e.currentTarget.style.color = "var(--color-t3)"; }}
-                      onClick={() => void resolve({ taskId: task._id as Id<"tasks">, resolution: "Dismissed by founder" })}
-                    >
-                      Dismiss
-                    </button>
-                  </div>
-                </div>
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">
+        {/* Queue */}
+        <div>
+          {!tasks ? (
+            <div className="space-y-3">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="h-[140px] rounded-2xl border border-[var(--color-b1)] bg-[var(--color-surface-2)] animate-pulse" />
+              ))}
+            </div>
+          ) : tasks.length === 0 ? (
+            <div className="flex min-h-[320px] flex-col items-center justify-center rounded-2xl border border-[var(--color-b1)] bg-white p-12 text-center">
+              <div className="mb-4 flex size-12 items-center justify-center rounded-full bg-[var(--color-green-bg)]">
+                <Check className="size-5 text-[var(--color-green)]" strokeWidth={2.5} />
               </div>
-            );
-          })}
+              <p className="text-[20px] font-semibold tracking-[-0.02em] text-foreground">
+                Queue is clear
+              </p>
+              <p className="mt-2 max-w-md text-[13.5px] leading-[1.6] text-[var(--color-t3)]">
+                All crews are operating within policy. New escalations appear here only when an agent crosses a routing or approval boundary.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {tasks.map((task) => {
+                const crew = CREW_META[task.crewTag as keyof typeof CREW_META];
+                const color = CREW_COLOR[task.crewTag] ?? "var(--color-t3)";
+
+                return (
+                  <div
+                    key={task._id}
+                    className="relative overflow-hidden rounded-2xl border border-[var(--color-b1)] bg-white p-5 shadow-[0_1px_3px_rgba(15,23,42,0.04)]"
+                  >
+                    {/* color strip */}
+                    <span
+                      className="absolute inset-y-0 left-0 w-[3px]"
+                      style={{ background: color }}
+                    />
+
+                    <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                      <div className="min-w-0 flex-1">
+                        <div className="mb-2 flex flex-wrap items-center gap-2">
+                          <StatusTag status="escalated" />
+                          {crew && (
+                            <span
+                              className="inline-flex items-center gap-1 rounded-md border px-2 py-0.5 font-mono text-[9.5px] font-semibold uppercase tracking-[0.12em]"
+                              style={{ background: `${color}12`, color, borderColor: `${color}30` }}
+                            >
+                              {crew.icon} {crew.label}
+                            </span>
+                          )}
+                          <span className="rounded-md border border-[var(--color-b1)] bg-[var(--color-surface-2)] px-2 py-0.5 font-mono text-[9.5px] font-semibold uppercase tracking-[0.12em] text-[var(--color-t3)]">
+                            {SOURCE_LABEL[task.source] ?? task.source}
+                          </span>
+                          <span className="ml-auto font-mono text-[10px] uppercase tracking-[0.14em] text-[var(--color-t4)]">
+                            {timeAgo(task.createdAt)}
+                          </span>
+                        </div>
+
+                        <p className="text-[16px] font-semibold leading-[1.45] tracking-[-0.01em] text-foreground">
+                          {task.summary}
+                        </p>
+
+                        {task.escalationReason && (
+                          <div className="mt-3 rounded-lg border border-[var(--color-amber-bg)] bg-[var(--color-amber-bg)] px-3.5 py-2.5">
+                            <p className="font-mono text-[9px] uppercase tracking-[0.14em] text-[var(--color-amber)]">
+                              Reason flagged
+                            </p>
+                            <p className="mt-1.5 text-[13px] leading-[1.55] text-foreground">
+                              {task.escalationReason}
+                            </p>
+                          </div>
+                        )}
+
+                        <div className="mt-3 flex flex-wrap items-center gap-2">
+                          <span className="font-mono text-[10px] tabular-nums text-[var(--color-t3)]">
+                            {(task.totalTokens ?? 0).toLocaleString()} tok
+                          </span>
+                          <span className="text-[var(--color-t4)]">·</span>
+                          <span className="font-mono text-[10px] tabular-nums text-[var(--color-t3)]">
+                            ${((task.totalCostCents ?? 0) / 100).toFixed(4)}
+                          </span>
+                          {task.latencyMs && (
+                            <>
+                              <span className="text-[var(--color-t4)]">·</span>
+                              <span className="font-mono text-[10px] tabular-nums text-[var(--color-t3)]">
+                                {task.latencyMs.toLocaleString()}ms
+                              </span>
+                            </>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex shrink-0 flex-col gap-2 lg:w-[140px]">
+                        <Button
+                          size="sm"
+                          onClick={() =>
+                            void resolve({
+                              taskId: task._id as Id<"tasks">,
+                              resolution: "Approved by founder",
+                            })
+                          }
+                        >
+                          <Check className="size-3.5" />
+                          Approve
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() =>
+                            void resolve({
+                              taskId: task._id as Id<"tasks">,
+                              resolution: "Dismissed by founder",
+                            })
+                          }
+                        >
+                          <X className="size-3.5" />
+                          Dismiss
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
-      )}
+
+        {/* Sidebar */}
+        <aside className="space-y-4 xl:sticky xl:top-6 xl:self-start">
+          <div className="rounded-2xl border border-[var(--color-b1)] bg-white p-5">
+            <p className="font-mono text-[9.5px] uppercase tracking-[0.14em] text-[var(--color-t3)]">
+              Founder review lane
+            </p>
+            <h3
+              className="mt-2 text-[18px] leading-[1.1] tracking-[-0.02em] text-foreground"
+              style={{ fontFamily: "var(--font-display)" }}
+            >
+              How to process the queue
+            </h3>
+            <div className="mt-4 space-y-2.5">
+              {[
+                "Approve when the agent made the correct escalation and the next step should proceed.",
+                "Dismiss when the escalation was unnecessary and the underlying prompt or routing should be tightened.",
+                "Use the source and crew badges to understand which operating lane triggered the review.",
+              ].map((rule) => (
+                <div key={rule} className="rounded-lg border border-[var(--color-b1)] bg-[var(--color-surface-2)]/50 px-3.5 py-2.5">
+                  <p className="text-[12.5px] leading-[1.55] text-[var(--color-t3)]">{rule}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-[var(--color-b1)] bg-white p-5">
+            <p className="font-mono text-[9.5px] uppercase tracking-[0.14em] text-[var(--color-t3)]">
+              Crew pressure
+            </p>
+            <h3
+              className="mt-2 text-[18px] leading-[1.1] tracking-[-0.02em] text-foreground"
+              style={{ fontFamily: "var(--font-display)" }}
+            >
+              Queue distribution
+            </h3>
+            <div className="mt-4 space-y-2">
+              {tasks && tasks.length > 0 ? (
+                Object.entries(crewCounts).map(([crewTag, count]) => {
+                  const crew = CREW_META[crewTag as keyof typeof CREW_META];
+                  const color = CREW_COLOR[crewTag] ?? "var(--color-t3)";
+                  return (
+                    <div
+                      key={crewTag}
+                      className="flex items-center justify-between rounded-lg border border-[var(--color-b1)] bg-[var(--color-surface-2)]/50 px-3.5 py-2.5"
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <span
+                          className="flex size-9 items-center justify-center rounded-lg text-[14px]"
+                          style={{ background: `${color}14`, border: `1px solid ${color}28` }}
+                        >
+                          {crew?.icon ?? "•"}
+                        </span>
+                        <div>
+                          <p className="text-[13px] font-semibold tracking-[-0.01em] text-foreground">
+                            {crew?.label ?? crewTag}
+                          </p>
+                          <p className="font-mono text-[9px] uppercase tracking-[0.12em] text-[var(--color-t3)]">
+                            Flagged items
+                          </p>
+                        </div>
+                      </div>
+                      <span className="text-[18px] font-semibold tabular-nums tracking-[-0.02em] text-foreground">
+                        {count}
+                      </span>
+                    </div>
+                  );
+                })
+              ) : (
+                <div className="rounded-lg border border-[var(--color-b1)] bg-[var(--color-surface-2)]/50 px-3.5 py-2.5">
+                  <p className="text-[12.5px] leading-[1.55] text-[var(--color-t3)]">
+                    Crew distribution appears here once the queue contains active escalations.
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+        </aside>
+      </div>
     </SecondaryPageShell>
   );
 }

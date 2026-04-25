@@ -17,12 +17,82 @@ export const getById = internalQuery({
   },
 });
 
+export const getByExternalId = query({
+  args: {
+    workspaceId: v.string(),
+    externalId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const tasks = await ctx.db
+      .query("tasks")
+      .withIndex("by_workspace_and_created_at", (q) => q.eq("workspaceId", args.workspaceId))
+      .collect();
+
+    return tasks.find((task) => task.externalId === args.externalId) ?? null;
+  },
+});
+
+import { action } from "./_generated/server";
+import { internal } from "./_generated/api";
+
+export const createManualTask = internalMutation({
+  args: {
+    workspaceId: v.string(),
+    summary: v.string(),
+  },
+  handler: async (ctx, args) => {
+    return await ctx.db.insert("tasks", {
+      source: "dashboard",
+      externalId: undefined,
+      summary: args.summary,
+      rawPayload: JSON.stringify({ summary: args.summary }),
+      crewTag: "executive",
+      assignedAgentId: undefined,
+      routedByOverseer: false,
+      status: "pending",
+      resolution: undefined,
+      escalationReason: undefined,
+      totalTokens: 0,
+      totalCostCents: 0,
+      latencyMs: undefined,
+      autoResolved: false,
+      userEmail: undefined,
+      workspaceId: args.workspaceId,
+      createdAt: Date.now(),
+      completedAt: undefined,
+    });
+  },
+});
+
+export const submitManualTask = action({
+  args: {
+    workspaceId: v.string(),
+    summary: v.string(),
+  },
+  handler: async (ctx, args) => {
+    // In a real app we might check ctx.auth.getUserIdentity() here
+    // But since it's gated at the Next.js layout layer, we'll just run it.
+    const taskId = await ctx.runMutation(internal.tasks.createManualTask, {
+      workspaceId: args.workspaceId,
+      summary: args.summary,
+    });
+    
+    await ctx.runAction(internal.agent_runner.overseer.routeTask, {
+      taskId,
+      workspaceId: args.workspaceId,
+    });
+
+    return taskId;
+  },
+});
+
 export const createInboundIntercomTask = internalMutation({
   args: {
     workspaceId: v.string(),
     externalId: v.optional(v.string()),
     summary: v.string(),
     rawPayload: v.string(),
+    userEmail: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const now = Date.now();
@@ -42,10 +112,67 @@ export const createInboundIntercomTask = internalMutation({
       totalCostCents: 0,
       latencyMs: undefined,
       autoResolved: false,
+      userEmail: args.userEmail,
       workspaceId: args.workspaceId,
       createdAt: now,
       completedAt: undefined,
     });
+  },
+});
+
+export const createInboundDiscordTask = internalMutation({
+  args: {
+    workspaceId: v.string(),
+    externalId: v.optional(v.string()),
+    summary: v.string(),
+    rawPayload: v.string(),
+    userEmail: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const now = Date.now();
+
+    return await ctx.db.insert("tasks", {
+      source: "discord",
+      externalId: args.externalId,
+      summary: args.summary,
+      rawPayload: args.rawPayload,
+      crewTag: "community",
+      assignedAgentId: undefined,
+      routedByOverseer: false,
+      status: "pending",
+      resolution: undefined,
+      escalationReason: undefined,
+      totalTokens: 0,
+      totalCostCents: 0,
+      latencyMs: undefined,
+      autoResolved: false,
+      userEmail: args.userEmail,
+      workspaceId: args.workspaceId,
+      createdAt: now,
+      completedAt: undefined,
+    });
+  },
+});
+
+export const getRecentByUserEmail = internalQuery({
+  args: {
+    workspaceId: v.string(),
+    userEmail: v.string(),
+    excludeTaskId: v.id("tasks"),
+    limit: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const tasks = await ctx.db
+      .query("tasks")
+      .withIndex("by_workspace_and_user_email", (q) =>
+        q.eq("workspaceId", args.workspaceId).eq("userEmail", args.userEmail),
+      )
+      .order("desc")
+      .take(args.limit + 1);
+
+    return tasks
+      .filter((t) => t._id !== args.excludeTaskId)
+      .slice(0, args.limit);
   },
 });
 
@@ -96,6 +223,7 @@ export const escalateTaskInternal = internalMutation({
   },
   handler: async (ctx, args) => {
     await ctx.db.patch(args.taskId, {
+      routedByOverseer: true,
       status: "escalated",
       escalationReason: args.reason,
       totalTokens: args.totalTokens,
@@ -114,6 +242,7 @@ export const failTaskInternal = internalMutation({
   },
   handler: async (ctx, args) => {
     await ctx.db.patch(args.taskId, {
+      routedByOverseer: true,
       status: "failed",
       escalationReason: args.reason,
       autoResolved: false,

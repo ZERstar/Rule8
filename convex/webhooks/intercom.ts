@@ -87,6 +87,7 @@ export const intercomWebhook = httpAction(async (ctx, request) => {
     externalId: item.id,
     summary,
     rawPayload: rawBody,
+    userEmail: email,
   });
 
   const result = await ctx.runAction(internal.agent_runner.overseer.routeTask, {

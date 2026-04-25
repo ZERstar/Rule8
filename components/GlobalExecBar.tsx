@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 
 export function GlobalExecBar({ onSend }: { onSend: (text: string) => void }) {
   const [input, setInput] = useState("");
@@ -13,62 +15,43 @@ export function GlobalExecBar({ onSend }: { onSend: (text: string) => void }) {
   };
 
   return (
-    <div
-      className="relative flex items-center gap-4 px-5"
-      style={{
-        height: 54,
-        background: "var(--color-s1)",
-        borderTop: "1px solid rgba(255,255,255,0.07)",
-      }}
-    >
-      {/* Gold gradient rule on top */}
-      <span
-        className="pointer-events-none absolute inset-x-0 top-0 h-[1px]"
-        style={{ background: "linear-gradient(90deg, var(--color-gold) 0%, transparent 65%)" }}
-      />
+    <div className="relative flex h-full flex-col gap-4 overflow-hidden rounded-[28px] border border-[var(--color-b1)] bg-white/80 px-5 py-4 shadow-[0_-12px_40px_rgba(15,23,42,0.06)] backdrop-blur-xl md:flex-row md:items-center md:gap-5 md:px-6">
+      <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(135deg,rgba(0,82,255,0.05),rgba(77,124,255,0.03))]" />
 
-      {/* Label */}
-      <div className="flex shrink-0 items-center gap-2">
-        <span className="font-mono text-[11px] font-bold uppercase tracking-[0.16em]" style={{ color: "var(--color-gold)" }}>
-          Executive
-        </span>
-        <span
-          className="h-[6px] w-[6px] rounded-full"
-          style={{ background: "var(--color-green)", animation: "pulse-gold 2s ease-in-out infinite" }}
-        />
+      <div className="relative flex shrink-0 items-center gap-3">
+        <div className="flex h-11 w-11 items-center justify-center rounded-[18px] bg-gradient-to-br from-[#0052FF] to-[#4D7CFF] font-mono text-[14px] font-semibold text-white shadow-[0_16px_28px_rgba(0,82,255,0.22)]">
+          E
+        </div>
+        <div>
+          <p className="app-kicker">Executive command</p>
+          <p className="text-[13px] font-semibold tracking-[-0.02em] text-foreground md:text-[14px]">
+            Ask for new agents, reviews, or operational decisions
+          </p>
+        </div>
       </div>
 
-      {/* Input */}
-      <div
-        className="flex flex-1 items-center rounded-[6px] px-3"
-        style={{ background: "var(--color-s2)", border: "1px solid rgba(255,255,255,0.08)", height: 36 }}
-        onFocusCapture={e => (e.currentTarget.style.borderColor = "rgba(200,151,42,0.40)")}
-        onBlurCapture={e  => (e.currentTarget.style.borderColor = "rgba(255,255,255,0.08)")}
-      >
-        <input
-          className="min-w-0 flex-1 bg-transparent text-[13px] outline-none"
-          placeholder="Ask Executive anything..."
-          style={{ color: "var(--color-t1)" }}
-          value={input}
-          onChange={e => setInput(e.target.value)}
-          onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); submit(); } }}
-        />
-        <span className="ml-3 hidden font-mono text-[10px] lg:block" style={{ color: "var(--color-t3)" }}>
-          or click Executive in the left panel
-        </span>
+      <div className="relative z-10 flex flex-1 items-center gap-3">
+        <div className="relative flex-1">
+          <Input
+            className="h-12 min-w-0 rounded-[22px] border-border/90 bg-white/88 pr-36 text-[13px] shadow-[0_1px_2px_rgba(15,23,42,0.03)]"
+            placeholder="Ask Executive anything..."
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                submit();
+              }
+            }}
+          />
+          <span className="pointer-events-none absolute right-4 top-1/2 hidden -translate-y-1/2 font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground lg:block">
+            ask or create
+          </span>
+          </div>
+        <Button className="h-12 rounded-full px-5 font-mono text-[11px] font-semibold uppercase tracking-[0.16em]" onClick={submit}>
+          Send
+        </Button>
       </div>
-
-      {/* Send */}
-      <button
-        className="shrink-0 rounded-[6px] font-mono text-[11px] font-bold text-black transition"
-        style={{ background: "var(--color-gold)", height: 32, paddingLeft: 14, paddingRight: 14 }}
-        onMouseEnter={e => (e.currentTarget.style.background = "var(--color-gold-l)")}
-        onMouseLeave={e => (e.currentTarget.style.background = "var(--color-gold)")}
-        onClick={submit}
-        type="button"
-      >
-        Ask →
-      </button>
     </div>
   );
 }
