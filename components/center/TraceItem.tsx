@@ -71,7 +71,7 @@ export function TraceItem({ isLive, ...trace }: TraceItemProps) {
       <div className="p-4">
         {/* Header row */}
         <div className="flex flex-wrap items-center gap-2">
-          <AgentTagChip tag={trace.agentTag} live={isLive} />
+          <AgentTagChip tag={trace.agentTag} />
           <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-[var(--color-t3)]">
             {trace.crewName}
           </span>

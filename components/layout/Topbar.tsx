@@ -2,84 +2,88 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { DASHBOARD_NAV, ROUTES, isActiveNavPath } from "@/lib/routes";
-import { cn } from "@/lib/utils";
+import { isActiveNavPath } from "@/lib/routes";
+
+const NAV_ITEMS = [
+  { href: "/dashboard",              label: "OVERVIEW",     exact: true },
+  { href: "/dashboard/escalations",  label: "ESCALATIONS",  exact: false },
+  { href: "/dashboard/integrations", label: "INTEGRATIONS", exact: false },
+  { href: "/dashboard/prompts",      label: "PROMPTS",      exact: false },
+];
 
 export function Topbar() {
   const pathname = usePathname();
 
   return (
-    <header className="sticky top-0 z-40 border-b border-[var(--color-b1)] bg-white/80 backdrop-blur-xl">
-      <div className="px-5 md:px-6 xl:px-8">
-        <div className="page-frame flex min-h-[60px] flex-wrap items-center gap-3 py-2.5 xl:flex-nowrap">
-          {/* LEFT: Logo + wordmark */}
-          <Link href={ROUTES.dashboardOverview} className="group/logo flex min-w-0 items-center gap-2.5">
-            <span className="relative flex size-9 items-center justify-center rounded-xl bg-gradient-to-br from-[#0052FF] to-[#4D7CFF] font-mono text-[14px] font-bold text-white shadow-[0_4px_14px_rgba(0,82,255,0.30)] transition-transform group-hover/logo:scale-105">
-              8
-            </span>
-            <div className="min-w-0">
-              <p className="truncate text-[15px] font-semibold tracking-[-0.01em] text-foreground" style={{ fontFamily: "var(--font-display)" }}>
-                Rule8
-              </p>
-              <p className="font-mono text-[9px] uppercase tracking-[0.18em] text-[var(--color-t3)]">
-                Control Room
-              </p>
-            </div>
-          </Link>
+    <header
+      className="flex h-14 shrink-0 items-center border-b px-5"
+      style={{ borderColor: "var(--color-border)", background: "var(--color-bg)" }}
+    >
+      {/* Left: logo + title + subtitle */}
+      <div className="flex items-center gap-3 w-[260px] shrink-0">
+        <div
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full font-bold text-white text-[18px]"
+          style={{ background: "var(--color-accent-orange)" }}
+        >
+          8
+        </div>
+        <div>
+          <p className="text-[14px] font-bold leading-none" style={{ color: "var(--color-t1)" }}>
+            Rule8 Control Room
+          </p>
+          <p
+            className="mt-0.5 text-[9px] font-semibold uppercase tracking-[0.12em] leading-none"
+            style={{ color: "var(--color-t3)" }}
+          >
+            Founder-Facing Agent Operations
+          </p>
+        </div>
+      </div>
 
-          {/* CENTER: Pill nav */}
-          <nav className="order-3 hidden w-full min-w-0 items-center justify-start md:flex lg:order-none lg:w-auto lg:flex-1 lg:justify-center">
-            <div className="flex items-center gap-1 rounded-full border border-[var(--color-b1)] bg-[var(--color-surface-2)] p-1">
-              {DASHBOARD_NAV.map(({ href, label, exact }) => {
-                const active = isActiveNavPath(pathname, href, exact);
-                return (
-                  <Link
-                    key={href}
-                    href={href}
-                    className={cn(
-                      "rounded-full px-4 py-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.14em] transition-all",
-                      active
-                        ? "bg-foreground text-white shadow-[0_4px_12px_rgba(15,23,42,0.20)]"
-                        : "text-[var(--color-t3)] hover:bg-white hover:text-foreground",
-                    )}
-                  >
-                    {label}
-                  </Link>
-                );
-              })}
-            </div>
-          </nav>
+      {/* Center: pill nav tabs */}
+      <div className="flex flex-1 items-center justify-center gap-1">
+        {NAV_ITEMS.map((item) => {
+          const active = isActiveNavPath(pathname, item.href, item.exact);
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              className="rounded-full border px-4 py-1.5 text-[12px] font-medium transition-colors"
+              style={{
+                borderColor: active ? "#1a1a1a" : "var(--color-border)",
+                background: active ? "#1a1a1a" : "var(--color-bg)",
+                color: active ? "#ffffff" : "var(--color-t2)",
+              }}
+            >
+              {item.label}
+            </Link>
+          );
+        })}
+      </div>
 
-          {/* RIGHT: Status chips + avatar */}
-          <div className="ml-auto flex items-center gap-2">
-            <div className="hidden items-center gap-2 rounded-full border border-[var(--color-b1)] bg-white px-3 py-1.5 lg:flex">
-              <span
-                className="size-1.5 rounded-full bg-[var(--color-green)]"
-                style={{ animation: "pulseDot 2.5s ease-in-out infinite" }}
-              />
-              <div className="leading-tight">
-                <p className="font-mono text-[8px] uppercase tracking-[0.14em] text-[var(--color-t3)]">
-                  Live ops
-                </p>
-                <p className="text-[11px] font-semibold text-foreground">
-                  All crews healthy
-                </p>
-              </div>
-            </div>
-
-            <div className="hidden rounded-full border border-[var(--color-b1)] bg-white px-3 py-1.5 xl:block">
-              <p className="font-mono text-[8px] uppercase tracking-[0.14em] text-[var(--color-t3)] leading-tight">
-                Founder mode
-              </p>
-              <p className="text-[11px] font-semibold text-foreground">
-                Supervision on
-              </p>
-            </div>
-
-            <span className="flex size-9 items-center justify-center rounded-full border border-[var(--color-b1)] bg-white font-mono text-[11px] font-semibold text-foreground">
-              TX
-            </span>
-          </div>
+      {/* Right: health status + mode label + avatar */}
+      <div className="flex items-center gap-3 w-[260px] shrink-0 justify-end">
+        <div className="hidden sm:flex items-center gap-1.5">
+          <span className="live-dot" />
+          <span className="text-[11px]" style={{ color: "var(--color-t2)" }}>
+            All crews healthy
+          </span>
+        </div>
+        <span
+          className="hidden xl:block text-[9px] font-semibold uppercase tracking-[0.10em]"
+          style={{ color: "var(--color-t3)" }}
+        >
+          FOUNDER MODE / Executive supervision on
+        </span>
+        <div
+          className="flex h-8 w-8 items-center justify-center rounded-full border font-mono text-[11px] font-semibold"
+          style={{
+            borderColor: "var(--color-border)",
+            background: "var(--color-bg-secondary)",
+            color: "var(--color-t1)",
+          }}
+        >
+          TX
         </div>
       </div>
     </header>

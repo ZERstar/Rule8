@@ -25,21 +25,10 @@ const ROLE_STYLES: Record<DiscussionMessage["role"], { bg: string; color: string
 
 export function ExecutivePanelColumn({ crewTag }: { crewTag: CrewTag }) {
   const meta = CREW_META[crewTag];
-  const [messages, setMessages] = useState<DiscussionMessage[]>([
-    {
-      id: 1,
-      role: "agent",
-      text: `${meta.label} has one active workflow and one pending handoff for policy review.`,
-    },
-    {
-      id: 2,
-      role: "executive",
-      text: `Monitoring ${meta.label}. Current path is within operating bounds. Founder guidance can be injected at any checkpoint.`,
-    },
-  ]);
+  const [messages, setMessages] = useState<DiscussionMessage[]>([]);
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
-  const nextIdRef = useRef(3);
+  const nextIdRef = useRef(1);
   const submitTask = useAction(api.tasks.submitManualTask);
 
   const placeholder = useMemo(
@@ -49,23 +38,13 @@ export function ExecutivePanelColumn({ crewTag }: { crewTag: CrewTag }) {
 
   const submit = () => {
     const text = input.trim();
-    if (!text) return;
+    if (!text || isTyping) return;
 
     setMessages((c) => [...c, { id: nextIdRef.current++, role: "founder", text }]);
     setInput("");
     setIsTyping(true);
 
     void submitTask({ workspaceId: WORKSPACE_ID, summary: text })
-      .then(() => {
-        setMessages((c) => [
-          ...c,
-          {
-            id: nextIdRef.current++,
-            role: "executive",
-            text: "Task successfully routed to overseer. Awaiting execution.",
-          },
-        ]);
-      })
       .catch((error: unknown) => {
         const msg = error instanceof Error ? error.message : "Dispatch failed";
         setMessages((c) => [
@@ -142,6 +121,7 @@ export function ExecutivePanelColumn({ crewTag }: { crewTag: CrewTag }) {
             placeholder={placeholder}
             rows={2}
             value={input}
+            disabled={isTyping}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
@@ -154,7 +134,7 @@ export function ExecutivePanelColumn({ crewTag }: { crewTag: CrewTag }) {
             size="icon-sm"
             onClick={submit}
             type="button"
-            disabled={!input.trim()}
+            disabled={!input.trim() || isTyping}
             aria-label="Send"
           >
             <Send className="size-3.5" />

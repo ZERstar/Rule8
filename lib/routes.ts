@@ -1,9 +1,13 @@
 export const ROUTES = {
   home: "/",
   dashboardOverview: "/dashboard",
+  dashboardActivity: "/dashboard/activity",
+  dashboardEvals: "/dashboard/evals",
   dashboardEscalations: "/dashboard/escalations",
   dashboardIntegrations: "/dashboard/integrations",
+  dashboardInvoices: "/dashboard/invoices",
   dashboardPrompts: "/dashboard/prompts",
+  dashboardTickets: "/dashboard/tickets",
   legacyEscalations: "/escalations",
   legacyIntegrations: "/integrations",
   legacyPrompts: "/prompts",
@@ -24,6 +28,18 @@ export const DASHBOARD_NAV: ReadonlyArray<{
 
 export function normalizeRedirectTarget(target: string | null | undefined) {
   if (!target || !target.startsWith("/") || target.startsWith("//")) {
+    return ROUTES.dashboardOverview;
+  }
+
+  if (target === ROUTES.legacyEscalations) return ROUTES.dashboardEscalations;
+  if (target === ROUTES.legacyIntegrations) return ROUTES.dashboardIntegrations;
+  if (target === ROUTES.legacyPrompts) return ROUTES.dashboardPrompts;
+
+  if (
+    target.startsWith("/api") ||
+    target === ROUTES.signIn ||
+    target === ROUTES.signUp
+  ) {
     return ROUTES.dashboardOverview;
   }
 

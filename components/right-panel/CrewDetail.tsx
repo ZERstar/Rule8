@@ -106,7 +106,7 @@ export function CrewDetail({
           )}
           {specialists.map((agent) => (
             <AgentListItem
-              key={"id" in agent ? agent.id : agent._id}
+              key={agent._id}
               name={agent.name}
               description={agent.description}
               status={agent.status}

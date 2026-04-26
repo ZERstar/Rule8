@@ -113,11 +113,24 @@ export const listRecent = query({
     limit: v.number(),
   },
   handler: async (ctx, args) => {
-    return await ctx.db
+    // Fetch extra rows to account for retry-induced duplicates before trimming to limit.
+    const rows = await ctx.db
       .query("traces")
       .withIndex("by_workspace_and_created_at", (q) => q.eq("workspaceId", args.workspaceId))
       .order("desc")
-      .take(args.limit);
+      .take(args.limit * 4);
+
+    const seen = new Set<string>();
+    const unique: typeof rows = [];
+    for (const row of rows) {
+      const key = `${row.runId}:${row.stepType}:${row.action}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        unique.push(row);
+      }
+      if (unique.length >= args.limit) break;
+    }
+    return unique;
   },
 });
 
@@ -188,6 +201,23 @@ export const recordInternal = internalMutation({
     workspaceId: v.string(),
   },
   handler: async (ctx, args) => {
+    // Guard against duplicate writes from Convex action retries.
+    // If a trace with the same (runId, stepType, action) exists for this task, skip.
+    if (args.taskId) {
+      const existing = await ctx.db
+        .query("traces")
+        .withIndex("by_task", (q) => q.eq("taskId", args.taskId!))
+        .filter((q) =>
+          q.and(
+            q.eq(q.field("runId"), args.runId),
+            q.eq(q.field("stepType"), args.stepType),
+            q.eq(q.field("action"), args.action),
+          )
+        )
+        .first();
+      if (existing) return existing._id;
+    }
+
     return await ctx.db.insert("traces", {
       ...args,
       createdAt: Date.now(),
@@ -217,12 +247,13 @@ export const insertDemo = mutation({
       createdAt: Date.now(),
     });
 
-    const demoTraces = (await ctx.db
-      .query("traces")
-      .withIndex("by_workspace_and_created_at", (q) => q.eq("workspaceId", args.workspaceId))
-      .order("desc")
-      .collect())
-      .filter((trace) => trace.runId.startsWith("run-live-") && trace.taskId === undefined);
+    const demoTraces = (
+      await ctx.db
+        .query("traces")
+        .withIndex("by_workspace_and_created_at", (q) => q.eq("workspaceId", args.workspaceId))
+        .order("desc")
+        .collect()
+    ).filter((trace) => trace.runId.startsWith("run-live-") && trace.taskId === undefined);
 
     for (const trace of demoTraces.slice(20)) {
       await ctx.db.delete(trace._id);
