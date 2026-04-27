@@ -104,7 +104,7 @@ export function AuthForm({ mode }: AuthFormProps) {
   return (
     <div className="w-full max-w-[360px]">
       {/* Header */}
-      <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--color-accent)]">
+      <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[#c2410c]">
         {isSignUp ? "Create access" : "Founder login"}
       </p>
       <h2
@@ -155,7 +155,7 @@ export function AuthForm({ mode }: AuthFormProps) {
         <button
           type="submit"
           disabled={isSubmitting || isPending}
-          className="mt-1 h-11 w-full rounded-lg bg-[var(--color-accent)] font-mono text-[12px] font-semibold uppercase tracking-[0.12em] text-white transition-opacity disabled:opacity-60 hover:opacity-90"
+          className="mt-1 h-12 w-full rounded-lg bg-[#ea580c] font-mono text-[12px] font-bold uppercase tracking-[0.14em] text-white shadow-[0_14px_30px_rgba(234,88,12,0.24)] transition hover:bg-[#c2410c] focus:outline-none focus:ring-2 focus:ring-[#fed7aa] focus:ring-offset-2 disabled:cursor-not-allowed disabled:bg-[#d6d3d1] disabled:text-[#57534e] disabled:shadow-none"
         >
           {isSubmitting || isPending
             ? "..."
@@ -165,11 +165,11 @@ export function AuthForm({ mode }: AuthFormProps) {
         </button>
       </form>
 
-      <p className="mt-5 text-[13px] text-[var(--color-t3)]">
+      <p className="mt-5 text-[13px] text-[#57534e]">
         {alternateLabel}{" "}
         <Link
           href={alternateHref}
-          className="text-[var(--color-accent)] hover:text-[var(--color-accent-2)]"
+          className="font-semibold text-[#c2410c] underline underline-offset-4 hover:text-[#9a3412]"
         >
           {alternateCta}
         </Link>
