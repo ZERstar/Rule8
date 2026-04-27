@@ -80,6 +80,15 @@ export const authProxyHandler =
       }
     : handler;
 
+function isDynamicServerUsageError(error: unknown) {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "digest" in error &&
+    (error as { digest?: unknown }).digest === "DYNAMIC_SERVER_USAGE"
+  );
+}
+
 export async function getToken() {
   if (!authServer) {
     return null;
@@ -88,7 +97,9 @@ export async function getToken() {
   try {
     return await authServer.getToken();
   } catch (error) {
-    console.error("Failed to fetch auth token from Convex Auth", error);
+    if (!isDynamicServerUsageError(error)) {
+      console.error("Failed to fetch auth token from Convex Auth", error);
+    }
     return null;
   }
 }
@@ -101,7 +112,9 @@ export async function isAuthenticated() {
   try {
     return await authServer.isAuthenticated();
   } catch (error) {
-    console.error("Failed to check Convex Auth session", error);
+    if (!isDynamicServerUsageError(error)) {
+      console.error("Failed to check Convex Auth session", error);
+    }
     return false;
   }
 }
