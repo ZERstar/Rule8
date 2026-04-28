@@ -82,6 +82,15 @@ export const intercomWebhook = httpAction(async (ctx, request) => {
       ? `${body} (${senderName})`
       : body;
 
+  // Ensure overseer and crew leads exist
+  await ctx.runMutation(internal.agents.initializeOverseer, {
+    workspaceId: WORKSPACE_ID,
+  });
+
+  await ctx.runMutation(internal.agents.initializeCrewLeads, {
+    workspaceId: WORKSPACE_ID,
+  });
+
   const taskId = await ctx.runMutation(internal.tasks.createInboundIntercomTask, {
     workspaceId: WORKSPACE_ID,
     externalId: item.id,
@@ -90,7 +99,7 @@ export const intercomWebhook = httpAction(async (ctx, request) => {
     userEmail: email,
   });
 
-  const result = await ctx.runAction(internal.agent_runner.overseer.routeTask, {
+  await ctx.scheduler.runAfter(0, internal.agent_runner.overseer.routeTask, {
     taskId,
     workspaceId: WORKSPACE_ID,
   });
@@ -99,7 +108,7 @@ export const intercomWebhook = httpAction(async (ctx, request) => {
     {
       ok: true,
       taskId,
-      result,
+      status: "queued",
     },
     { status: 202 },
   );

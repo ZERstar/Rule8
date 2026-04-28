@@ -56,7 +56,7 @@ export function AgentListColumn({
 
           {specialists.map((agent) => (
             <AgentListItem
-              key={"id" in agent ? agent.id : agent._id}
+              key={agent._id}
               description={agent.description}
               integrationNames={agent.integrationNames}
               lastAction={agent.lastAction}

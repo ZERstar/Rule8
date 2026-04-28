@@ -2,7 +2,8 @@ import { v } from "convex/values";
 
 import { internal } from "../_generated/api";
 import { internalAction } from "../_generated/server";
-import { runAgentModel } from "../../lib/anthropic";
+import type { Doc } from "../_generated/dataModel";
+import { runAgentModel, type RunAgentModelResult } from "../../lib/anthropic";
 import { buildCommunitySystemPrompt } from "../../lib/agents/prompts";
 import { COMMUNITY_TOOLS } from "../../lib/agents/tools";
 
@@ -33,6 +34,10 @@ function getReplyFallback(cls: ContentClass, summary: string): string {
   return `Great question! ${summary.slice(0, 80)} — check our docs at docs.rule8.ai or reach out to support for a detailed walkthrough.`;
 }
 
+function errorMessage(error: unknown) {
+  return error instanceof Error ? error.message : String(error);
+}
+
 export const handleTask = internalAction({
   args: {
     taskId: v.id("tasks"),
@@ -57,7 +62,7 @@ export const handleTask = internalAction({
         userEmail: task.userEmail,
         excludeTaskId: task._id,
         limit: 5,
-      });
+      }) as Doc<"tasks">[];
 
       if (priorTasks.length > 0) {
         episodicContext =
@@ -103,13 +108,48 @@ export const handleTask = internalAction({
     });
 
     if (contentClass === "dm") {
-      const modelResult = await runAgentModel({
-        systemPrompt,
-        userPrompt: `Discord message (violation detected):\n${task.summary}\n\nAction required: issue a DM warning.${episodicContext}`,
-        maxTokens: 240,
-        tools: COMMUNITY_TOOLS,
-        mockText: fallbackText,
-      });
+      let modelResult: RunAgentModelResult;
+      try {
+        modelResult = await runAgentModel({
+          systemPrompt,
+          userPrompt: `Discord message (violation detected):\n${task.summary}\n\nAction required: issue a DM warning.${episodicContext}`,
+          maxTokens: 240,
+          tools: COMMUNITY_TOOLS,
+          mockText: fallbackText,
+        });
+      } catch (error: unknown) {
+        const reason = `AI model failed while drafting moderation DM: ${errorMessage(error)}`;
+
+        await ctx.runMutation(internal.traces.recordInternal, {
+          runId: args.runId,
+          taskId: task._id,
+          agentId: assignedAgent._id,
+          agentTag: "community",
+          crewTag: "community",
+          crewName: assignedAgent.crewName,
+          action: reason,
+          stepType: "error",
+          model: assignedAgent.modelId,
+          status: "error",
+          toolName: undefined,
+          toolOutputPreview: undefined,
+          tokensIn: 0,
+          tokensOut: 0,
+          costCents: 0,
+          latencyMs: 0,
+          cacheHit: false,
+          cacheTokens: 0,
+          confidence: 0,
+          workspaceId: args.workspaceId,
+        });
+
+        await ctx.runMutation(internal.tasks.failTaskInternal, {
+          taskId: task._id,
+          reason,
+        });
+
+        throw new Error(reason);
+      }
 
       await ctx.runMutation(internal.traces.recordInternal, {
         runId: args.runId,
@@ -153,13 +193,48 @@ export const handleTask = internalAction({
         ? `Discord message (feature request):\n${task.summary}\n\nAction: acknowledge and confirm it has been logged.${episodicContext}`
         : `Discord message (product question):\n${task.summary}\n\nAction: reply helpfully in thread.${episodicContext}`;
 
-    const modelResult = await runAgentModel({
-      systemPrompt,
-      userPrompt,
-      maxTokens: 320,
-      tools: COMMUNITY_TOOLS,
-      mockText: fallbackText,
-    });
+    let modelResult: RunAgentModelResult;
+    try {
+      modelResult = await runAgentModel({
+        systemPrompt,
+        userPrompt,
+        maxTokens: 320,
+        tools: COMMUNITY_TOOLS,
+        mockText: fallbackText,
+      });
+    } catch (error: unknown) {
+      const reason = `AI model failed while drafting community response: ${errorMessage(error)}`;
+
+      await ctx.runMutation(internal.traces.recordInternal, {
+        runId: args.runId,
+        taskId: task._id,
+        agentId: assignedAgent._id,
+        agentTag: "community",
+        crewTag: "community",
+        crewName: assignedAgent.crewName,
+        action: reason,
+        stepType: "error",
+        model: assignedAgent.modelId,
+        status: "error",
+        toolName: undefined,
+        toolOutputPreview: undefined,
+        tokensIn: 0,
+        tokensOut: 0,
+        costCents: 0,
+        latencyMs: 0,
+        cacheHit: false,
+        cacheTokens: 0,
+        confidence: 0,
+        workspaceId: args.workspaceId,
+      });
+
+      await ctx.runMutation(internal.tasks.failTaskInternal, {
+        taskId: task._id,
+        reason,
+      });
+
+      throw new Error(reason);
+    }
 
     await ctx.runMutation(internal.traces.recordInternal, {
       runId: args.runId,

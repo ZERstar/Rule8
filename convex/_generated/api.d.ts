@@ -14,6 +14,8 @@ import type * as agent_runner_overseer from "../agent_runner/overseer.js";
 import type * as agent_runner_support from "../agent_runner/support.js";
 import type * as agents from "../agents.js";
 import type * as auth from "../auth.js";
+import type * as chat from "../chat.js";
+import type * as evals from "../evals.js";
 import type * as http from "../http.js";
 import type * as integrations from "../integrations.js";
 import type * as productContext from "../productContext.js";
@@ -36,6 +38,8 @@ declare const fullApi: ApiFromModules<{
   "agent_runner/support": typeof agent_runner_support;
   agents: typeof agents;
   auth: typeof auth;
+  chat: typeof chat;
+  evals: typeof evals;
   http: typeof http;
   integrations: typeof integrations;
   productContext: typeof productContext;

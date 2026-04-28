@@ -1,5 +1,6 @@
-import { internalMutation, internalQuery, mutation, query } from "./_generated/server";
+import { action, internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import { v } from "convex/values";
+import type { Id } from "./_generated/dataModel";
 
 const ONE_DAY_MS = 1000 * 60 * 60 * 24;
 
@@ -32,7 +33,6 @@ export const getByExternalId = query({
   },
 });
 
-import { action } from "./_generated/server";
 import { internal } from "./_generated/api";
 
 export const createManualTask = internalMutation({
@@ -42,7 +42,7 @@ export const createManualTask = internalMutation({
   },
   handler: async (ctx, args) => {
     return await ctx.db.insert("tasks", {
-      source: "dashboard",
+      source: "manual",
       externalId: undefined,
       summary: args.summary,
       rawPayload: JSON.stringify({ summary: args.summary }),
@@ -69,15 +69,25 @@ export const submitManualTask = action({
     workspaceId: v.string(),
     summary: v.string(),
   },
-  handler: async (ctx, args) => {
+  handler: async (ctx, args): Promise<Id<"tasks">> => {
     // In a real app we might check ctx.auth.getUserIdentity() here
     // But since it's gated at the Next.js layout layer, we'll just run it.
-    const taskId = await ctx.runMutation(internal.tasks.createManualTask, {
+
+    // Ensure overseer and crew leads exist
+    await ctx.runMutation(internal.agents.initializeOverseer, {
+      workspaceId: args.workspaceId,
+    });
+
+    await ctx.runMutation(internal.agents.initializeCrewLeads, {
+      workspaceId: args.workspaceId,
+    });
+
+    const taskId: Id<"tasks"> = await ctx.runMutation(internal.tasks.createManualTask, {
       workspaceId: args.workspaceId,
       summary: args.summary,
     });
-    
-    await ctx.runAction(internal.agent_runner.overseer.routeTask, {
+
+    await ctx.scheduler.runAfter(0, internal.agent_runner.overseer.routeTask, {
       taskId,
       workspaceId: args.workspaceId,
     });
@@ -304,6 +314,17 @@ export const resolveEscalation = mutation({
       resolution: args.resolution,
       completedAt: Date.now(),
     });
+  },
+});
+
+export const listRecent = query({
+  args: { workspaceId: v.string(), limit: v.number() },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("tasks")
+      .withIndex("by_workspace_and_created_at", (q) => q.eq("workspaceId", args.workspaceId))
+      .order("desc")
+      .take(args.limit);
   },
 });
 

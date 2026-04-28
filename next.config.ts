@@ -6,10 +6,6 @@ export default function nextConfig(phase: string): NextConfig {
   return {
     // Isolate dev artifacts from production build output to avoid chunk mismatch issues.
     distDir: phase === PHASE_DEVELOPMENT_SERVER ? '.next-dev' : '.next',
-    devIndicators: {
-      appIsrStatus: false,
-      buildActivity: false,
-    },
     async redirects() {
       return [
         {

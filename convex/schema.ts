@@ -248,4 +248,11 @@ export default defineSchema({
     workspaceId: v.string(),
     createdAt: v.number(),
   }).index("by_workspace_and_agent_id", ["workspaceId", "agentId"]),
+
+  chatMessages: defineTable({
+    workspaceId: v.string(),
+    role: v.union(v.literal("founder"), v.literal("executive")),
+    text: v.string(),
+    createdAt: v.number(),
+  }).index("by_workspace_and_created_at", ["workspaceId", "createdAt"]),
 });

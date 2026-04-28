@@ -87,6 +87,15 @@ export const discordWebhook = httpAction(async (ctx, request) => {
   const userEmail = authorId ? `discord:${authorId}` : undefined;
   const externalId = channelId ? `discord-${channelId}-${Date.now()}` : undefined;
 
+  // Ensure overseer and crew leads exist
+  await ctx.runMutation(internal.agents.initializeOverseer, {
+    workspaceId: WORKSPACE_ID,
+  });
+
+  await ctx.runMutation(internal.agents.initializeCrewLeads, {
+    workspaceId: WORKSPACE_ID,
+  });
+
   const taskId = await ctx.runMutation(internal.tasks.createInboundDiscordTask, {
     workspaceId: WORKSPACE_ID,
     externalId,
@@ -109,11 +118,11 @@ export const discordWebhook = httpAction(async (ctx, request) => {
   }
 
   const runId = `run-discord-${Date.now()}`;
-  const result = await ctx.runAction(internal.agent_runner.community.handleTask, {
+  await ctx.scheduler.runAfter(0, internal.agent_runner.community.handleTask, {
     taskId,
     runId,
     workspaceId: WORKSPACE_ID,
   });
 
-  return Response.json({ ok: true, taskId, result }, { status: 202 });
+  return Response.json({ ok: true, taskId, status: "queued" }, { status: 202 });
 });

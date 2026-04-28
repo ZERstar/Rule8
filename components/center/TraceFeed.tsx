@@ -98,7 +98,7 @@ export function TraceFeed() {
           <div className="flex flex-col gap-2.5">
             {visible.map((t) => (
               <TraceItem
-                key={"_id" in t ? t._id : t.runId}
+                key={t._id}
                 runId={t.runId}
                 agentTag={t.agentTag}
                 crewName={t.crewName}
@@ -116,7 +116,7 @@ export function TraceFeed() {
                 toolName={t.toolName}
                 toolOutputPreview={t.toolOutputPreview}
                 createdAt={t.createdAt}
-                isLive={"_id" in t ? liveIds.has(t._id) : false}
+                isLive={liveIds.has(t._id)}
               />
             ))}
           </div>

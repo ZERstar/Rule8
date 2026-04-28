@@ -2,7 +2,7 @@ import { v } from "convex/values";
 
 import { internal } from "../_generated/api";
 import { internalAction } from "../_generated/server";
-import { runAgentModel } from "../../lib/anthropic";
+import { runAgentModel, type RunAgentModelResult } from "../../lib/anthropic";
 import { buildWorkerSystemPrompt } from "../../lib/agents/prompts";
 import { FINANCE_TOOLS } from "../../lib/agents/tools";
 import {
@@ -26,6 +26,10 @@ function getBillingFallback(summary: string, didRefund: boolean, amountCents?: n
   }
 
   return `We reviewed the billing activity tied to your request and prepared the next response: ${summary}.`;
+}
+
+function errorMessage(error: unknown) {
+  return error instanceof Error ? error.message : String(error);
 }
 
 export const handleTask = internalAction({
@@ -274,17 +278,52 @@ export const handleTask = internalAction({
       workspaceId: args.workspaceId,
     });
 
-    const modelResult = await runAgentModel({
-      systemPrompt: buildWorkerSystemPrompt({
-        agentName: assignedAgent.name,
+    let modelResult: RunAgentModelResult;
+    try {
+      modelResult = await runAgentModel({
+        systemPrompt: buildWorkerSystemPrompt({
+          agentName: assignedAgent.name,
+          crewName: assignedAgent.crewName,
+          description: assignedAgent.description,
+        }),
+        userPrompt: `Task summary:\n${task.summary}\n\nStripe lookup:\n${lookup.reason}\nRefund result:\n${refund.refundId} for $${(refund.amountCents / 100).toFixed(2)}${episodicContext}`,
+        maxTokens: 320,
+        tools: FINANCE_TOOLS,
+        mockText: getBillingFallback(task.summary, true, refund.amountCents),
+      });
+    } catch (error: unknown) {
+      const reason = `AI model failed while drafting billing response: ${errorMessage(error)}`;
+
+      await ctx.runMutation(internal.traces.recordInternal, {
+        runId: args.runId,
+        taskId: task._id,
+        agentId: assignedAgent._id,
+        agentTag: "finance",
+        crewTag: "finance",
         crewName: assignedAgent.crewName,
-        description: assignedAgent.description,
-      }),
-      userPrompt: `Task summary:\n${task.summary}\n\nStripe lookup:\n${lookup.reason}\nRefund result:\n${refund.refundId} for $${(refund.amountCents / 100).toFixed(2)}${episodicContext}`,
-      maxTokens: 320,
-      tools: FINANCE_TOOLS,
-      mockText: getBillingFallback(task.summary, true, refund.amountCents),
-    });
+        action: reason,
+        stepType: "error",
+        model: assignedAgent.modelId,
+        status: "error",
+        toolName: undefined,
+        toolOutputPreview: undefined,
+        tokensIn: 0,
+        tokensOut: 0,
+        costCents: 0,
+        latencyMs: 0,
+        cacheHit: false,
+        cacheTokens: 0,
+        confidence: 0,
+        workspaceId: args.workspaceId,
+      });
+
+      await ctx.runMutation(internal.tasks.failTaskInternal, {
+        taskId: task._id,
+        reason,
+      });
+
+      throw new Error(reason);
+    }
 
     await ctx.runMutation(internal.traces.recordInternal, {
       runId: args.runId,

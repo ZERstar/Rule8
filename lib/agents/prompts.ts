@@ -50,3 +50,24 @@ export function buildCommunitySystemPrompt(args: CommunityPromptArgs) {
     "Auto-resolve when confidence > 0.75. Escalate only for novel policy edge cases.",
   ].join(" ");
 }
+
+type ExecutiveChatPromptArgs = {
+  workspaceId: string;
+  agentCount: number;
+  tasksToday: number;
+  costTodayCents: number;
+  escalatedCount: number;
+};
+
+export function buildExecutiveChatPrompt(args: ExecutiveChatPromptArgs) {
+  const costDisplay = `$${(args.costTodayCents / 100).toFixed(2)}`;
+  return [
+    "You are the Rule8 Executive AI, a strategic operations assistant for an AI-native startup.",
+    `Workspace: ${args.workspaceId}.`,
+    `Current workspace state: ${args.agentCount} agents managed, ${args.tasksToday} tasks processed today, ${costDisplay} spent today, ${args.escalatedCount} escalations pending review.`,
+    "You help the founder understand what their agents are doing, make operational decisions, and plan next steps.",
+    "Answer concisely and directly. Reference the provided workspace numbers when relevant.",
+    "When asked to create an agent or dispatch a task, describe what you're doing — the system handles creation separately.",
+    "Keep responses under 3 sentences unless the founder asks for detail.",
+  ].join(" ");
+}

@@ -2,12 +2,16 @@ import { v } from "convex/values";
 
 import { internal } from "../_generated/api";
 import { internalAction } from "../_generated/server";
-import { runAgentModel } from "../../lib/anthropic";
+import { runAgentModel, type RunAgentModelResult } from "../../lib/anthropic";
 import { buildWorkerSystemPrompt } from "../../lib/agents/prompts";
 import { SUPPORT_TOOLS } from "../../lib/agents/tools";
 
 function getReplyFallback(summary: string, crewName: string) {
   return `${crewName} reviewed this request and prepared a response: ${summary}. We have taken the next appropriate step and will follow up if anything else is needed.`;
+}
+
+function errorMessage(error: unknown) {
+  return error instanceof Error ? error.message : String(error);
 }
 
 export const handleTask = internalAction({
@@ -76,17 +80,52 @@ export const handleTask = internalAction({
       }
     }
 
-    const modelResult = await runAgentModel({
-      systemPrompt: buildWorkerSystemPrompt({
-        agentName: assignedAgent.name,
+    let modelResult: RunAgentModelResult;
+    try {
+      modelResult = await runAgentModel({
+        systemPrompt: buildWorkerSystemPrompt({
+          agentName: assignedAgent.name,
+          crewName: assignedAgent.crewName,
+          description: assignedAgent.description,
+        }),
+        userPrompt: `Task summary:\n${task.summary}\n\nRaw payload:\n${task.rawPayload}${episodicContext}`,
+        maxTokens: 320,
+        tools: SUPPORT_TOOLS,
+        mockText: getReplyFallback(task.summary, assignedAgent.crewName),
+      });
+    } catch (error: unknown) {
+      const reason = `AI model failed while drafting support response: ${errorMessage(error)}`;
+
+      await ctx.runMutation(internal.traces.recordInternal, {
+        runId: args.runId,
+        taskId: task._id,
+        agentId: assignedAgent._id,
+        agentTag: task.crewTag === "finance" ? "finance" : "support",
+        crewTag: task.crewTag,
         crewName: assignedAgent.crewName,
-        description: assignedAgent.description,
-      }),
-      userPrompt: `Task summary:\n${task.summary}\n\nRaw payload:\n${task.rawPayload}${episodicContext}`,
-      maxTokens: 320,
-      tools: SUPPORT_TOOLS,
-      mockText: getReplyFallback(task.summary, assignedAgent.crewName),
-    });
+        action: reason,
+        stepType: "error",
+        model: assignedAgent.modelId,
+        status: "error",
+        toolName: undefined,
+        toolOutputPreview: undefined,
+        tokensIn: 0,
+        tokensOut: 0,
+        costCents: 0,
+        latencyMs: 0,
+        cacheHit: false,
+        cacheTokens: 0,
+        confidence: 0,
+        workspaceId: args.workspaceId,
+      });
+
+      await ctx.runMutation(internal.tasks.failTaskInternal, {
+        taskId: task._id,
+        reason,
+      });
+
+      throw new Error(reason);
+    }
 
     const resolutionPreview = modelResult.text.slice(0, 160);
 
