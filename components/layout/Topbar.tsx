@@ -65,7 +65,7 @@ export function Topbar() {
       </div>
 
       {/* Right: health status + avatar */}
-      <div className="flex items-center gap-3 w-[260px] shrink-0 justify-end overflow-hidden">
+      <div className="flex items-center gap-3 w-[260px] shrink-0 justify-end">
         <div className="hidden sm:flex items-center gap-1.5 shrink-0">
           <span className="live-dot" />
           <span className="whitespace-nowrap text-[11px]" style={{ color: "var(--color-t2)" }}>
@@ -158,7 +158,7 @@ function ProfileDropdown() {
       {open && (
         <div
           role="menu"
-          className="absolute right-0 top-[calc(100%+10px)] z-50 w-[286px] overflow-hidden rounded-[28px] border border-border/70 bg-[#fffdf8] shadow-[0_24px_80px_rgba(28,39,49,0.18)]"
+          className="fixed right-5 top-[66px] z-[100] w-[300px] overflow-hidden rounded-[28px] border border-border/70 bg-[#fffdf8] shadow-[0_24px_80px_rgba(28,39,49,0.18)]"
         >
           <div className="relative border-b border-border/70 px-4 py-4">
             <div className="pointer-events-none absolute inset-x-0 top-0 h-16 bg-[linear-gradient(135deg,rgba(249,115,22,0.16),rgba(20,184,166,0.10))]" />
@@ -180,19 +180,28 @@ function ProfileDropdown() {
               icon={<UserRound className="h-4 w-4" />}
               label="Account profile"
               detail="Founder identity"
-              onClick={() => setOpen(false)}
+              onClick={() => {
+                setOpen(false);
+                router.push(ROUTES.dashboardProfile);
+              }}
             />
             <MenuItem
               icon={<ShieldCheck className="h-4 w-4" />}
               label="Workspace health"
               detail="All crews healthy"
-              onClick={() => setOpen(false)}
+              onClick={() => {
+                setOpen(false);
+                router.push(ROUTES.dashboardActivity);
+              }}
             />
             <MenuItem
               icon={<Settings className="h-4 w-4" />}
               label="Settings"
-              detail="Coming soon"
-              onClick={() => setOpen(false)}
+              detail="Preferences and controls"
+              onClick={() => {
+                setOpen(false);
+                router.push(ROUTES.dashboardSettings);
+              }}
             />
           </div>
 
