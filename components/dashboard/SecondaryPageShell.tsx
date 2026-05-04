@@ -1,12 +1,23 @@
-import { Topbar } from "@/components/layout/Topbar";
+import { ExecutivePanel } from "@/components/dashboard/ExecutivePanel";
 
-export function SecondaryPageShell({ children }: { children: React.ReactNode }) {
+export function SecondaryPageShell({
+  children,
+  contentClassName = "",
+}: {
+  children: React.ReactNode;
+  contentClassName?: string;
+}) {
   return (
-    <div className="flex min-h-screen flex-col bg-background text-foreground">
-      <Topbar />
-      <main className="app-scroll flex-1 overflow-y-auto px-5 pb-10 pt-6 md:px-6 md:pt-7 xl:px-8">
-        <div className="page-frame">{children}</div>
-      </main>
+    <div className="flex h-full w-full min-w-0 overflow-hidden">
+      {/* Main content */}
+      <div className="thin-scroll min-w-0 flex-1 overflow-y-auto">
+        <div className={`mx-auto w-full max-w-5xl px-8 py-8 ${contentClassName}`}>
+          {children}
+        </div>
+      </div>
+
+      {/* Executive panel */}
+      <ExecutivePanel />
     </div>
   );
 }

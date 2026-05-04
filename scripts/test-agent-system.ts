@@ -55,8 +55,6 @@ const scenarios: Scenario[] = [
 async function main() {
   const failures: string[] = [];
 
-  await client.mutation(api.agents.seedDemoData, { workspaceId });
-
   const createdAgent = await client.mutation(api.agents.createFromBrief, {
     workspaceId,
     brief: "Finance refund auditor for duplicate Stripe charge review",

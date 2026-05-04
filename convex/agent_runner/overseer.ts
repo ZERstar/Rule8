@@ -8,7 +8,7 @@ import { runAgentModel } from "../../lib/anthropic";
 import { buildOverseerSystemPrompt } from "../../lib/agents/prompts";
 
 type RouteDecision = {
-  crewTag: "finance" | "support" | "escalate";
+  crewTag: "finance" | "support" | "community" | "escalate";
   confidence: number;
   reason: string;
 };
@@ -17,6 +17,10 @@ type RouteTaskArgs = {
   taskId: Id<"tasks">;
   workspaceId: string;
 };
+
+function errorMessage(error: unknown) {
+  return error instanceof Error ? error.message : String(error);
+}
 
 function heuristicRoute(summary: string) {
   const normalized = summary.toLowerCase();
@@ -49,6 +53,14 @@ function heuristicRoute(summary: string) {
     } satisfies RouteDecision;
   }
 
+  if (/(discord|slack|community|moderation|spam|ban|feature request|social|channel|member|post|thread)/.test(normalized)) {
+    return {
+      crewTag: "community",
+      confidence: 0.87,
+      reason: "Detected community or moderation language suitable for Community Crew.",
+    } satisfies RouteDecision;
+  }
+
   return {
     crewTag: "escalate",
     confidence: 0.46,
@@ -65,7 +77,7 @@ function parseRouteDecision(text: string, fallback: RouteDecision): RouteDecisio
   try {
     const parsed = JSON.parse(match[0]) as Partial<RouteDecision>;
     if (
-      (parsed.crewTag === "finance" || parsed.crewTag === "support" || parsed.crewTag === "escalate") &&
+      (parsed.crewTag === "finance" || parsed.crewTag === "support" || parsed.crewTag === "community" || parsed.crewTag === "escalate") &&
       typeof parsed.confidence === "number" &&
       typeof parsed.reason === "string"
     ) {
@@ -81,13 +93,13 @@ function parseRouteDecision(text: string, fallback: RouteDecision): RouteDecisio
 type RouteResult =
   | { status: "escalated"; reason: string }
   | { status: "failed"; reason: string }
-  | { status: "running"; assignedAgentId: Id<"agents">; crewTag: "finance" | "support" };
+  | { status: "running"; assignedAgentId: Id<"agents">; crewTag: "finance" | "support" | "community" };
 
 async function routeTaskHandler(
   ctx: ActionCtx,
   args: RouteTaskArgs,
 ): Promise<RouteResult> {
-    const task = await ctx.runQuery(internal.tasks.getById, { taskId: args.taskId });
+    const task = await ctx.runQuery(internal.tasks.getByIdInternal, { taskId: args.taskId });
     const overseer = await ctx.runQuery(internal.agents.getOverseer, {
       workspaceId: args.workspaceId,
     });
@@ -98,11 +110,51 @@ async function routeTaskHandler(
 
     const fallbackRoute = heuristicRoute(task.summary);
     const runId = `run-${task.externalId ?? task._id}-${Date.now()}`;
+    const contextRows = await ctx.runQuery(internal.productContext.listAllInternal, {
+      workspaceId: args.workspaceId,
+    });
+    const contextMap = Object.fromEntries(contextRows.map((row) => [row.key, row.value]));
     const routeModel = await runAgentModel({
-      systemPrompt: buildOverseerSystemPrompt({ workspaceId: args.workspaceId }),
+      systemPrompt: buildOverseerSystemPrompt({
+        workspaceId: args.workspaceId,
+        productDescription: contextMap.product_description,
+        escalationRules: contextMap.escalation_rules,
+      }),
       userPrompt: `Classify this inbound task:\n${task.summary}\n\nPayload:\n${task.rawPayload}`,
       maxTokens: 240,
       mockText: JSON.stringify(fallbackRoute),
+    }).catch(async (error: unknown) => {
+      const reason = `AI model failed while routing task: ${errorMessage(error)}`;
+
+      await ctx.runMutation(internal.traces.recordInternal, {
+        runId,
+        taskId: task._id,
+        agentId: overseer._id,
+        agentTag: "executive",
+        crewTag: "executive",
+        crewName: "Executive",
+        action: reason,
+        stepType: "error",
+        model: overseer.modelId,
+        status: "error",
+        toolName: undefined,
+        toolOutputPreview: undefined,
+        tokensIn: 0,
+        tokensOut: 0,
+        costCents: 0,
+        latencyMs: 0,
+        cacheHit: false,
+        cacheTokens: 0,
+        confidence: 0,
+        workspaceId: args.workspaceId,
+      });
+
+      await ctx.runMutation(internal.tasks.failTaskInternal, {
+        taskId: task._id,
+        reason,
+      });
+
+      throw new Error(reason);
     });
 
     const decision = parseRouteDecision(routeModel.text, fallbackRoute);
@@ -114,7 +166,7 @@ async function routeTaskHandler(
       agentTag: "executive",
       crewTag: "executive",
       crewName: "Executive",
-      action: `Classified task for ${decision.crewTag === "escalate" ? "Executive review" : `${decision.crewTag} crew`} — ${decision.reason}`,
+      action: `Classified task for ${decision.crewTag === "escalate" ? "Executive review" : `${decision.crewTag} crew`} with product context "${(contextMap.product_description ?? "none").slice(0, 120)}" - ${decision.reason}`,
       stepType: "overseer_route",
       model: routeModel.model,
       status: decision.confidence >= 0.7 ? "ok" : "warn",
@@ -171,6 +223,12 @@ async function routeTaskHandler(
 
   if (decision.crewTag === "finance") {
     await ctx.runAction(internal.agent_runner.billing.handleTask, {
+      taskId: task._id,
+      runId,
+      workspaceId: args.workspaceId,
+    });
+  } else if (decision.crewTag === "community") {
+    await ctx.runAction(internal.agent_runner.community.handleTask, {
       taskId: task._id,
       runId,
       workspaceId: args.workspaceId,

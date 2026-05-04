@@ -15,6 +15,10 @@ export const SUPPORT_TOOLS: AgentToolDefinition[] = [
     input_schema: {
       type: "object",
       properties: {
+        conversationId: {
+          type: "string",
+          description: "The Intercom conversation ID. Use the provided default when available.",
+        },
         reply: {
           type: "string",
           description: "The exact response that should be sent to the customer.",

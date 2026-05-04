@@ -4,6 +4,7 @@ import { v } from "convex/values";
 const agentStatus = v.union(
   v.literal("active"),
   v.literal("idle"),
+  v.literal("running"),
   v.literal("critical"),
   v.literal("paused"),
   v.literal("done"),
@@ -60,11 +61,30 @@ const traceStepType = v.union(
 
 export default defineSchema({
   waitlist: defineTable({
-    email: v.string(),
-    source: v.optional(v.string()),
+    email:    v.string(),
+    name:     v.optional(v.string()),
+    source:   v.optional(v.string()),
     joinedAt: v.number(),
     referrer: v.optional(v.string()),
   }).index("by_email", ["email"]),
+
+  workspaces: defineTable({
+    ownerUserId: v.string(),
+    name: v.string(),
+    slug: v.string(),
+    plan: v.union(
+      v.literal("free"),
+      v.literal("pro"),
+      v.literal("scale"),
+    ),
+    industryTemplate: v.optional(v.string()),
+    onboardingStep: v.optional(v.string()),
+    onboardingCrewConfig: v.optional(v.string()),
+    onboardingComplete: v.boolean(),
+    createdAt: v.number(),
+  })
+    .index("by_owner", ["ownerUserId"])
+    .index("by_slug", ["slug"]),
 
   agents: defineTable({
     chamberId: v.string(),
@@ -120,11 +140,44 @@ export default defineSchema({
     workspaceId: v.string(),
     createdAt: v.number(),
     completedAt: v.optional(v.number()),
+    retryCount: v.optional(v.number()),
+    nextRetryAt: v.optional(v.number()),
+    failureMode: v.optional(
+      v.union(
+        v.literal("transient"),
+        v.literal("permanent"),
+        v.literal("escalated"),
+      ),
+    ),
+    lastError: v.optional(v.string()),
   })
+    .index("by_workspace_external_id", ["workspaceId", "externalId"])
     .index("by_workspace_and_created_at", ["workspaceId", "createdAt"])
     .index("by_workspace_and_status", ["workspaceId", "status"])
     .index("by_workspace_and_crew_tag", ["workspaceId", "crewTag"])
     .index("by_workspace_and_user_email", ["workspaceId", "userEmail"]),
+
+  notifications: defineTable({
+    workspaceId: v.string(),
+    type: v.union(
+      v.literal("escalation"),
+      v.literal("agent_failed"),
+      v.literal("integration_error"),
+      v.literal("task_resolved"),
+      v.literal("weekly_digest"),
+      v.literal("signal_cluster"),
+      v.literal("anomaly"),
+    ),
+    title: v.string(),
+    body: v.string(),
+    taskId: v.optional(v.id("tasks")),
+    linkTo: v.optional(v.string()),
+    read: v.boolean(),
+    createdAt: v.number(),
+  })
+    .index("by_workspace_and_created_at", ["workspaceId", "createdAt"])
+    .index("by_workspace_and_read", ["workspaceId", "read"])
+    .index("by_workspace_and_read_and_created_at", ["workspaceId", "read", "createdAt"]),
 
   traces: defineTable({
     runId: v.string(),
@@ -152,6 +205,15 @@ export default defineSchema({
     .index("by_workspace_and_created_at", ["workspaceId", "createdAt"])
     .index("by_workspace_and_agent_tag", ["workspaceId", "agentTag"])
     .index("by_task", ["taskId"]),
+
+  signals: defineTable({
+    workspaceId: v.string(),
+    pattern: v.string(),
+    count: v.number(),
+    insight: v.string(),
+    crew: v.string(),
+    detectedAt: v.number(),
+  }).index("by_workspace_detected", ["workspaceId", "detectedAt"]),
 
   evalCases: defineTable({
     agentId: v.id("agents"),
@@ -238,6 +300,15 @@ export default defineSchema({
     updatedAt: v.number(),
   }).index("by_workspace_and_provider", ["workspaceId", "provider"]),
 
+  userPreferences: defineTable({
+    userId: v.string(),
+    workspaceId: v.string(),
+    escalationNotifications: v.boolean(),
+    compactMode: v.boolean(),
+    commandSuggestions: v.boolean(),
+    updatedAt: v.number(),
+  }).index("by_user", ["userId"]),
+
   promptVersions: defineTable({
     agentId: v.id("agents"),
     version: v.number(),
@@ -248,4 +319,11 @@ export default defineSchema({
     workspaceId: v.string(),
     createdAt: v.number(),
   }).index("by_workspace_and_agent_id", ["workspaceId", "agentId"]),
+
+  chatMessages: defineTable({
+    workspaceId: v.string(),
+    role: v.union(v.literal("founder"), v.literal("executive")),
+    text: v.string(),
+    createdAt: v.number(),
+  }).index("by_workspace_and_created_at", ["workspaceId", "createdAt"]),
 });

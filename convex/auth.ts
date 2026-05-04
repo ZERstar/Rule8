@@ -67,7 +67,7 @@ export const createAuth = (ctx: GenericCtx<DataModel>) => {
     baseURL: {
       allowedHosts,
       fallback: siteUrl,
-      protocol: process.env.NODE_ENV === "production" ? "https" : "auto",
+      protocol: isLocalHost ? "auto" : "https",
     },
     trustedOrigins,
     database: authComponent.adapter(ctx),

@@ -1,5 +1,11 @@
+import { Suspense } from "react";
+
 import { AuthForm } from "../AuthForm";
 
 export default function SignUpPage() {
-  return <AuthForm mode="sign-up" />;
+  return (
+    <Suspense fallback={null}>
+      <AuthForm mode="sign-up" />
+    </Suspense>
+  );
 }

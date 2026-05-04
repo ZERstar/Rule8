@@ -1,33 +1,67 @@
 "use client";
 
-import Link from "next/link";
+import { useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { startTransition, useState } from "react";
-
+import Link from "next/link";
 import { authClient } from "@/lib/auth-client";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { ROUTES, normalizeRedirectTarget } from "@/lib/routes";
 
-type AuthMode = "sign-in" | "sign-up";
+interface FieldProps {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  type: string;
+  placeholder: string;
+  autoComplete: string;
+}
 
-export function AuthForm({ mode }: { mode: AuthMode }) {
+function Field({ label, value, onChange, type, placeholder, autoComplete }: FieldProps) {
+  return (
+    <label className="block">
+      <span className="mb-1.5 block font-mono text-[10px] uppercase tracking-[0.12em] text-[var(--color-t2)]">
+        {label}
+      </span>
+      <input
+        type={type}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        autoComplete={autoComplete}
+        required
+        className="h-10 w-full rounded-lg border border-[var(--color-b2)] bg-[var(--color-surface-2)] px-3 text-[13px] text-[var(--color-t1)] placeholder:text-[var(--color-t4)] outline-none transition focus:border-[var(--color-accent)] focus:ring-2 focus:ring-[rgba(61,110,255,0.15)]"
+      />
+    </label>
+  );
+}
+
+interface AuthFormProps {
+  mode: "sign-in" | "sign-up";
+}
+
+export function AuthForm({ mode }: AuthFormProps) {
+  const isSignUp = mode === "sign-up";
   const router = useRouter();
   const searchParams = useSearchParams();
-  const isSignUp = mode === "sign-up";
+  const [isPending, startTransition] = useTransition();
+
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const alternateHref = isSignUp ? ROUTES.signIn : ROUTES.signUp;
-  const alternateLabel = isSignUp ? "Already have credentials?" : "Need an account?";
-  const alternateCta = isSignUp ? "Sign in" : "Create one";
   const redirectTo = normalizeRedirectTarget(searchParams.get("redirectTo"));
 
-  const onSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  const alternateLabel = isSignUp ? "Already have an account?" : "Don't have an account?";
+  const alternatePath = isSignUp ? ROUTES.signIn : ROUTES.signUp;
+  const alternateHref =
+    redirectTo === ROUTES.dashboardOverview
+      ? alternatePath
+      : `${alternatePath}?redirectTo=${encodeURIComponent(redirectTo)}`;
+  const alternateCta = isSignUp ? "Sign in" : "Create one";
+
+  async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
     setError(null);
     setIsSubmitting(true);
 
@@ -38,29 +72,20 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
           password,
           name,
         });
-
         if (signUpResult.error) {
-          setError(signUpResult.error.message ?? "Unable to create account.");
+          setError(signUpResult.error.message ?? "Sign up failed. Please try again.");
           return;
         }
-
-        const signInResult = await authClient.signIn.email({
-          email,
-          password,
-        });
-
+        // After sign-up, sign in automatically
+        const signInResult = await authClient.signIn.email({ email, password });
         if (signInResult.error) {
-          setError(signInResult.error.message ?? "Account created, but sign-in failed.");
+          setError(signInResult.error.message ?? "Sign in failed. Please try again.");
           return;
         }
       } else {
-        const signInResult = await authClient.signIn.email({
-          email,
-          password,
-        });
-
-        if (signInResult.error) {
-          setError(signInResult.error.message ?? "Invalid email or password.");
+        const result = await authClient.signIn.email({ email, password });
+        if (result.error) {
+          setError(result.error.message ?? "Sign in failed. Check your credentials.");
           return;
         }
       }
@@ -69,124 +94,86 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
         router.replace(redirectTo);
         router.refresh();
       });
-    } catch (submissionError) {
-      setError(
-        submissionError instanceof Error
-          ? submissionError.message
-          : "Authentication request failed.",
-      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
     } finally {
       setIsSubmitting(false);
     }
-  };
+  }
 
   return (
-    <div className="mx-auto w-full max-w-md">
-      <div className="mb-8">
-        <p className="mb-3 font-mono text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
-          {isSignUp ? "Create Founder Access" : "Founder Login"}
-        </p>
-        <h2 className="text-[34px] font-semibold tracking-[-0.05em] text-foreground">
-          {isSignUp ? "Create your Rule8 account" : "Sign in to Rule8"}
-        </h2>
-        <p className="mt-4 text-[15px] leading-8 text-muted-foreground">
-          {isSignUp
-            ? "Use a local email and password for the Sprint 1 dashboard build."
-            : "Use the credentials you created during sign-up."}
-        </p>
-      </div>
+    <div className="w-full max-w-[360px]">
+      {/* Header */}
+      <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[#c2410c]">
+        {isSignUp ? "Create access" : "Founder login"}
+      </p>
+      <h2
+        className="mt-2 text-[28px] font-semibold tracking-[-0.03em] text-foreground"
+        style={{ fontFamily: "var(--font-display)" }}
+      >
+        {isSignUp ? "Create your account" : "Sign in to Rule8"}
+      </h2>
+      <p className="mt-2 text-[13px] text-[var(--color-t2)]">
+        {isSignUp ? "Set up your founder credentials." : "Enter your credentials to continue."}
+      </p>
 
-      <form className="space-y-5" onSubmit={onSubmit}>
+      {/* Form */}
+      <form className="mt-6 space-y-4" onSubmit={onSubmit}>
         {isSignUp && (
           <Field
-            autoComplete="name"
-            label="Founder Name"
-            onChange={setName}
-            placeholder="Tejas"
-            type="text"
+            label="Name"
             value={name}
+            onChange={setName}
+            type="text"
+            placeholder="Your name"
+            autoComplete="name"
           />
         )}
         <Field
-          autoComplete="email"
           label="Email"
-          onChange={setEmail}
-          placeholder="founder@rule8.dev"
-          type="email"
           value={email}
+          onChange={setEmail}
+          type="email"
+          placeholder="you@company.com"
+          autoComplete="email"
         />
         <Field
-          autoComplete={isSignUp ? "new-password" : "current-password"}
           label="Password"
-          onChange={setPassword}
-          placeholder="Minimum 8 characters"
-          type="password"
           value={password}
+          onChange={setPassword}
+          type="password"
+          placeholder="Min. 8 characters"
+          autoComplete={isSignUp ? "new-password" : "current-password"}
         />
 
         {error && (
-          <p className="rounded-[20px] border border-[rgba(216,95,75,0.24)] bg-[rgba(216,95,75,0.08)] px-4 py-3 text-sm text-red">
+          <p className="rounded-lg border border-[rgba(248,113,113,0.25)] bg-[rgba(248,113,113,0.08)] px-3 py-2.5 text-[13px] text-[var(--color-red)]">
             {error}
           </p>
         )}
 
-        <Button
-          className="h-12 w-full rounded-full px-4 font-mono text-[12px] font-semibold uppercase tracking-[0.16em] text-black disabled:cursor-not-allowed disabled:opacity-60"
-          disabled={isSubmitting}
+        <button
           type="submit"
+          disabled={isSubmitting || isPending}
+          className="mt-1 h-12 w-full rounded-lg bg-[#ea580c] font-mono text-[12px] font-bold uppercase tracking-[0.14em] text-white shadow-[0_14px_30px_rgba(234,88,12,0.24)] transition hover:bg-[#c2410c] focus:outline-none focus:ring-2 focus:ring-[#fed7aa] focus:ring-offset-2 disabled:cursor-not-allowed disabled:bg-[#d6d3d1] disabled:text-[#57534e] disabled:shadow-none"
         >
-          {isSubmitting
-            ? isSignUp
-              ? "Creating account..."
-              : "Signing in..."
+          {isSubmitting || isPending
+            ? "..."
             : isSignUp
               ? "Create account"
               : "Sign in"}
-        </Button>
+        </button>
       </form>
 
-      <p className="mt-6 text-sm text-muted-foreground">
+      <p className="mt-5 text-[13px] text-[#57534e]">
         {alternateLabel}{" "}
         <Link
-          className="font-medium text-gold transition hover:text-gold-l"
           href={alternateHref}
+          className="font-semibold text-[#c2410c] underline underline-offset-4 hover:text-[#9a3412]"
         >
           {alternateCta}
         </Link>
       </p>
     </div>
-  );
-}
-
-function Field({
-  autoComplete,
-  label,
-  onChange,
-  placeholder,
-  type,
-  value,
-}: {
-  autoComplete: string;
-  label: string;
-  onChange: (value: string) => void;
-  placeholder: string;
-  type: string;
-  value: string;
-}) {
-  return (
-    <label className="block">
-      <span className="mb-2.5 block font-mono text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
-        {label}
-      </span>
-      <Input
-        autoComplete={autoComplete}
-        className="h-12 w-full rounded-[20px] border-b2 bg-popover px-4 text-sm text-foreground placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-gold-a12 focus-visible:border-gold"
-        onChange={(event) => onChange(event.target.value)}
-        placeholder={placeholder}
-        required
-        type={type}
-        value={value}
-      />
-    </label>
   );
 }

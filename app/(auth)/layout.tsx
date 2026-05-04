@@ -1,53 +1,110 @@
-import type { PropsWithChildren } from "react";
-
+import { redirect } from "next/navigation";
 import { isAuthenticated } from "@/lib/auth-server";
 import { ROUTES } from "@/lib/routes";
-import { redirect } from "next/navigation";
 
-export default async function AuthLayout({ children }: PropsWithChildren) {
-  if (await isAuthenticated()) {
+export default async function AuthLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  const authed = await isAuthenticated();
+  if (authed) {
     redirect(ROUTES.dashboardOverview);
   }
 
   return (
-    <main className="min-h-screen bg-background px-6 py-10 text-foreground md:px-8">
-      <div className="page-frame flex min-h-[calc(100vh-5rem)] items-center justify-center">
-        <div className="grid w-full max-w-5xl overflow-hidden rounded-[36px] border border-border/80 bg-[rgba(255,250,243,0.72)] shadow-[0_28px_90px_rgba(28,39,49,0.14)] backdrop-blur-[18px] lg:grid-cols-[1.08fr_0.92fr]">
-          <section className="relative overflow-hidden border-b border-border/70 bg-[linear-gradient(160deg,rgba(242,118,61,0.16),rgba(77,124,240,0.08)_52%,rgba(255,255,255,0.16)_100%)] p-8 lg:border-b-0 lg:border-r lg:p-12">
-            <div className="pointer-events-none absolute right-0 top-0 h-40 w-40 rounded-full bg-[rgba(255,178,122,0.28)] blur-3xl" />
-            <div className="pointer-events-none absolute bottom-0 left-0 h-40 w-40 rounded-full bg-[rgba(77,124,240,0.16)] blur-3xl" />
-            <div className="relative">
-              <div className="mb-10 flex h-14 w-14 items-center justify-center rounded-[18px] bg-[linear-gradient(135deg,#ffbf91_0%,#f2763d_100%)] font-mono text-lg font-semibold text-black shadow-[0_16px_28px_rgba(242,118,61,0.22)]">
-                8
+    <div className="min-h-screen bg-background flex items-center justify-center p-6">
+      <div className="w-full max-w-4xl overflow-hidden rounded-2xl border border-[var(--color-b1)] bg-[var(--color-surface)] shadow-[0_24px_80px_rgba(0,0,0,0.60)]">
+        <div className="grid lg:grid-cols-[1.1fr_0.9fr]">
+          {/* Left branding column */}
+          <div className="relative overflow-hidden bg-[var(--color-surface-2)] p-10 flex flex-col justify-between min-h-[520px]">
+            {/* Ambient glow */}
+            <div
+              className="absolute inset-0 pointer-events-none"
+              style={{
+                background:
+                  "radial-gradient(ellipse 60% 50% at 100% 0%, rgba(61,110,255,0.18) 0%, transparent 70%)",
+              }}
+            />
+
+            {/* Grid pattern overlay */}
+            <div
+              className="absolute inset-0 pointer-events-none opacity-[0.05]"
+              style={{
+                backgroundImage:
+                  "linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px)",
+                backgroundSize: "24px 24px",
+              }}
+            />
+
+            {/* Top: Logo + wordmark */}
+            <div className="relative z-10">
+              <div className="flex items-center gap-3 mb-8">
+                {/* Logo badge */}
+                <div
+                  className="w-7 h-7 rounded-md flex items-center justify-center flex-shrink-0"
+                  style={{
+                    background:
+                      "linear-gradient(135deg, #3D6EFF 0%, #6B8FFF 100%)",
+                  }}
+                >
+                  <span
+                    className="text-white text-[13px] font-bold"
+                    style={{ fontFamily: "var(--font-display)" }}
+                  >
+                    8
+                  </span>
+                </div>
+                <div>
+                  <span
+                    className="text-[var(--color-t1)] text-[15px] font-semibold tracking-[-0.02em] leading-none block"
+                    style={{ fontFamily: "var(--font-display)" }}
+                  >
+                    Rule8
+                  </span>
+                  <span className="font-mono text-[9px] uppercase tracking-[0.14em] text-[var(--color-t3)] block mt-0.5">
+                    Agent OS
+                  </span>
+                </div>
               </div>
-              <p className="mb-4 font-mono text-[11px] uppercase tracking-[0.22em] text-[var(--color-gold)]">
-                Rule8 access
-              </p>
-              <h1 className="mb-5 max-w-md text-[48px] font-semibold leading-[0.98] tracking-[-0.06em] text-[var(--color-t1)]">
-                Enter the founder command layer.
+
+              {/* Big headline */}
+              <h1
+                className="text-[40px] font-semibold leading-[1.0] tracking-tight text-[var(--color-t1)] max-w-[280px]"
+                style={{ fontFamily: "var(--font-display)" }}
+              >
+                The ops layer for AI-first founders.
               </h1>
-              <p className="max-w-md text-[15px] leading-8 text-[var(--color-t2)]">
-                Sign in to manage crews, adjust prompts, inspect traces, and supervise automations from a single operational surface.
-              </p>
-              <div className="mt-10 grid gap-3 sm:grid-cols-3">
-                {[
-                  { label: "Crews", value: "3" },
-                  { label: "Core pages", value: "4" },
-                  { label: "Command mode", value: "Live" },
-                ].map((item) => (
-                  <div key={item.label} className="rounded-[24px] border border-white/70 bg-white/68 px-4 py-4 shadow-[0_14px_30px_rgba(28,39,49,0.06)]">
-                    <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-muted-foreground">{item.label}</p>
-                    <p className="mt-3 text-[26px] font-semibold leading-none tracking-[-0.05em] text-foreground">{item.value}</p>
-                  </div>
-                ))}
-              </div>
             </div>
-          </section>
-          <section className="bg-white/52 p-6 sm:p-8 lg:p-12">
+
+            {/* Bottom: Stat pills */}
+            <div className="relative z-10 flex gap-2 flex-wrap">
+              {[
+                { label: "Agents", value: "9" },
+                { label: "Core pages", value: "4" },
+                { label: "Mode", value: "Live" },
+              ].map(({ label, value }) => (
+                <div
+                  key={label}
+                  className="rounded-md border border-[var(--color-b1)] bg-[var(--color-bg)] px-3 py-2"
+                >
+                  <span className="font-mono text-[9px] uppercase tracking-[0.12em] text-[var(--color-t3)] block leading-none">
+                    {label}
+                  </span>
+                  <span className="font-mono text-[13px] font-semibold text-[var(--color-t1)] block mt-1 leading-none">
+                    {value}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Right form column */}
+          <div className="bg-[var(--color-bg)] p-8 flex items-center justify-center">
             {children}
-          </section>
+          </div>
         </div>
       </div>
-    </main>
+    </div>
   );
 }

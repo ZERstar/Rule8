@@ -1,5 +1,6 @@
-import { internalMutation, mutation, query } from "./_generated/server";
+import { internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import { v } from "convex/values";
+import { internal } from "./_generated/api";
 
 const crewTagValidator = v.union(
   v.literal("executive"),
@@ -113,11 +114,26 @@ export const listRecent = query({
     limit: v.number(),
   },
   handler: async (ctx, args) => {
-    return await ctx.db
+    await ctx.runQuery(internal.workspaces.assertOwned, { workspaceId: args.workspaceId });
+
+    // Fetch extra rows to account for retry-induced duplicates before trimming to limit.
+    const rows = await ctx.db
       .query("traces")
       .withIndex("by_workspace_and_created_at", (q) => q.eq("workspaceId", args.workspaceId))
       .order("desc")
-      .take(args.limit);
+      .take(args.limit * 4);
+
+    const seen = new Set<string>();
+    const unique: typeof rows = [];
+    for (const row of rows) {
+      const key = `${row.runId}:${row.stepType}:${row.action}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        unique.push(row);
+      }
+      if (unique.length >= args.limit) break;
+    }
+    return unique;
   },
 });
 
@@ -126,9 +142,50 @@ export const listByTaskId = query({
     taskId: v.id("tasks"),
   },
   handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("Unauthenticated");
+
+    const task = await ctx.db.get(args.taskId);
+    if (!task) return [];
+
+    const workspace = await ctx.db
+      .query("workspaces")
+      .withIndex("by_owner", (q) => q.eq("ownerUserId", identity.tokenIdentifier))
+      .unique();
+    if (!workspace || workspace._id !== task.workspaceId) {
+      throw new Error("Unauthorized");
+    }
+
     return await ctx.db
       .query("traces")
       .withIndex("by_task", (q) => q.eq("taskId", args.taskId))
+      .collect();
+  },
+});
+
+export const listByTask = query({
+  args: {
+    taskId: v.id("tasks"),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("Unauthenticated");
+
+    const task = await ctx.db.get(args.taskId);
+    if (!task) return [];
+
+    const workspace = await ctx.db
+      .query("workspaces")
+      .withIndex("by_owner", (q) => q.eq("ownerUserId", identity.tokenIdentifier))
+      .unique();
+    if (!workspace || workspace._id !== task.workspaceId) {
+      throw new Error("Unauthorized");
+    }
+
+    return await ctx.db
+      .query("traces")
+      .withIndex("by_task", (q) => q.eq("taskId", args.taskId))
+      .order("asc")
       .collect();
   },
 });
@@ -140,6 +197,8 @@ export const listByUser = query({
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
+    await ctx.runQuery(internal.workspaces.assertOwned, { workspaceId: args.workspaceId });
+
     const tasks = await ctx.db
       .query("tasks")
       .withIndex("by_workspace_and_user_email", (q) =>
@@ -161,6 +220,37 @@ export const listByUser = query({
       .flat()
       .sort((a, b) => b.createdAt - a.createdAt)
       .slice(0, args.limit ?? 50);
+  },
+});
+
+export const listForContext = internalQuery({
+  args: {
+    workspaceId: v.string(),
+    limit: v.number(),
+  },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("traces")
+      .withIndex("by_workspace_and_created_at", (q) => q.eq("workspaceId", args.workspaceId))
+      .order("desc")
+      .take(args.limit);
+  },
+});
+
+export const listSince = internalQuery({
+  args: {
+    workspaceId: v.string(),
+    since: v.number(),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("traces")
+      .withIndex("by_workspace_and_created_at", (q) =>
+        q.eq("workspaceId", args.workspaceId).gte("createdAt", args.since),
+      )
+      .order("desc")
+      .take(args.limit ?? 500);
   },
 });
 
@@ -188,6 +278,23 @@ export const recordInternal = internalMutation({
     workspaceId: v.string(),
   },
   handler: async (ctx, args) => {
+    // Guard against duplicate writes from Convex action retries.
+    // If a trace with the same (runId, stepType, action) exists for this task, skip.
+    if (args.taskId) {
+      const existing = await ctx.db
+        .query("traces")
+        .withIndex("by_task", (q) => q.eq("taskId", args.taskId!))
+        .filter((q) =>
+          q.and(
+            q.eq(q.field("runId"), args.runId),
+            q.eq(q.field("stepType"), args.stepType),
+            q.eq(q.field("action"), args.action),
+          )
+        )
+        .first();
+      if (existing) return existing._id;
+    }
+
     return await ctx.db.insert("traces", {
       ...args,
       createdAt: Date.now(),
@@ -198,6 +305,8 @@ export const recordInternal = internalMutation({
 export const insertDemo = mutation({
   args: { workspaceId: v.string() },
   handler: async (ctx, args) => {
+    await ctx.runQuery(internal.workspaces.assertOwned, { workspaceId: args.workspaceId });
+
     const template =
       LIVE_TRACE_TEMPLATES[Math.floor(Math.random() * LIVE_TRACE_TEMPLATES.length)];
 
@@ -217,12 +326,13 @@ export const insertDemo = mutation({
       createdAt: Date.now(),
     });
 
-    const demoTraces = (await ctx.db
-      .query("traces")
-      .withIndex("by_workspace_and_created_at", (q) => q.eq("workspaceId", args.workspaceId))
-      .order("desc")
-      .collect())
-      .filter((trace) => trace.runId.startsWith("run-live-") && trace.taskId === undefined);
+    const demoTraces = (
+      await ctx.db
+        .query("traces")
+        .withIndex("by_workspace_and_created_at", (q) => q.eq("workspaceId", args.workspaceId))
+        .order("desc")
+        .collect()
+    ).filter((trace) => trace.runId.startsWith("run-live-") && trace.taskId === undefined);
 
     for (const trace of demoTraces.slice(20)) {
       await ctx.db.delete(trace._id);

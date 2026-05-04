@@ -1,6 +1,9 @@
 import { redirect } from "next/navigation";
-import { ROUTES } from "@/lib/routes";
+import { isAuthenticated } from "@/lib/auth-server";
+import { LandingPage } from "@/components/landing/LandingPage";
 
-export default function HomePage() {
-  redirect(ROUTES.dashboardOverview);
+export default async function HomePage() {
+  const authed = await isAuthenticated();
+  if (authed) redirect("/dashboard");
+  return <LandingPage />;
 }
