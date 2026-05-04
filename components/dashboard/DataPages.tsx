@@ -2,17 +2,21 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { useQuery } from "convex/react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { Activity, ListChecks, Receipt, Ticket } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { PageHeader } from "@/components/dashboard/PageHeader";
 import { SecondaryPageShell } from "@/components/dashboard/SecondaryPageShell";
+import { EmptyState } from "@/components/dashboard/EmptyState";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { CREW_META, WORKSPACE_ID } from "@/lib/constants";
 import { ROUTES, isActiveNavPath } from "@/lib/routes";
+import { useAuthenticatedQuery } from "@/lib/use-authenticated-query";
+import { useWorkspaceId } from "@/lib/workspace-context";
+
 
 type AgentKey = "billing" | "support" | "community";
 
@@ -90,8 +94,27 @@ function MetricCard({ label, value, hint }: { label: string; value: string | num
 }
 
 export function ActivityPage() {
-  const traces = useQuery(api.traces.listRecent, { workspaceId: WORKSPACE_ID, limit: 80 });
-  const stats = useQuery(api.tasks.getStats, { workspaceId: WORKSPACE_ID });
+  const workspaceId = useWorkspaceId();
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const traces = useAuthenticatedQuery(api.traces.listRecent, { workspaceId, limit: 80 });
+  const stats = useAuthenticatedQuery(api.tasks.getStats, { workspaceId });
+  const crewFilter = searchParams.get("crew") ?? "all";
+  const statusFilter = searchParams.get("status") ?? "all";
+  const filtered = (traces ?? []).filter((trace) => {
+    const crewOk = crewFilter === "all" || trace.crewTag === crewFilter;
+    const statusOk = statusFilter === "all" || trace.status === statusFilter;
+    return crewOk && statusOk;
+  });
+
+  function setFilter(key: "crew" | "status", value: string) {
+    const next = new URLSearchParams(searchParams.toString());
+    if (value === "all") next.delete(key);
+    else next.set(key, value);
+    const query = next.toString();
+    router.replace(query ? `${pathname}?${query}` : pathname);
+  }
 
   return (
     <SecondaryPageShell>
@@ -100,11 +123,44 @@ export function ActivityPage() {
         eyebrow="· Activity"
         title="Live activity stream"
         description="A route-backed view for model calls, tool runs, handoffs, and policy checks coming from Convex traces."
-        action={<Link className="rounded-full border border-border bg-white px-4 py-2 text-[12px] font-semibold" href={ROUTES.dashboardOverview}>Back to dashboard</Link>}
       />
 
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        {(["all", "finance", "support", "community", "executive"] as const).map((crew) => (
+          <button
+            key={crew}
+            type="button"
+            onClick={() => setFilter("crew", crew)}
+            className="rounded-full border px-3 py-1 font-mono text-[10px] uppercase tracking-[0.12em] transition-colors"
+            style={{
+              borderColor: crewFilter === crew ? "#1f2937" : "var(--color-border)",
+              background: crewFilter === crew ? "#1f2937" : "white",
+              color: crewFilter === crew ? "white" : "var(--color-t2)",
+            }}
+          >
+            {crew === "all" ? "All crews" : crew}
+          </button>
+        ))}
+        <span className="mx-1 text-[var(--color-b1)]">|</span>
+        {(["all", "ok", "warn", "error"] as const).map((status) => (
+          <button
+            key={status}
+            type="button"
+            onClick={() => setFilter("status", status)}
+            className="rounded-full border px-3 py-1 font-mono text-[10px] uppercase tracking-[0.12em] transition-colors"
+            style={{
+              borderColor: statusFilter === status ? "#1f2937" : "var(--color-border)",
+              background: statusFilter === status ? "#1f2937" : "white",
+              color: statusFilter === status ? "white" : "var(--color-t2)",
+            }}
+          >
+            {status === "all" ? "All statuses" : status}
+          </button>
+        ))}
+      </div>
+
       <div className="mb-6 grid gap-3 md:grid-cols-3">
-        <MetricCard label="Trace rows" value={traces?.length ?? "—"} hint="Latest unique trace records." />
+        <MetricCard label="Trace rows" value={traces === undefined ? "—" : filtered.length} hint="Latest unique trace records." />
         <MetricCard label="Tasks today" value={stats?.tasksToday ?? "—"} hint="Tasks created in the last 24 hours." />
         <MetricCard label="Escalated" value={stats?.escalated ?? "—"} hint="Open work needing founder review." />
       </div>
@@ -115,9 +171,28 @@ export function ActivityPage() {
         </CardHeader>
         <CardContent className="divide-y divide-border/70 p-0">
           {traces === undefined && <p className="p-6 text-sm text-muted-foreground">Loading activity...</p>}
-          {traces?.length === 0 && <p className="p-6 text-sm text-muted-foreground">No activity yet.</p>}
-          {traces?.map((trace) => (
-            <div key={trace._id} className="grid gap-3 px-6 py-4 md:grid-cols-[150px_minmax(0,1fr)_120px]">
+          {traces?.length === 0 && (
+            <div className="p-6">
+              <EmptyState
+                icon={Activity}
+                title="No agent activity yet"
+                description="Send a manual task or connect an integration to start seeing agent traces here."
+                cta={{ label: "Connect an integration", href: ROUTES.dashboardIntegrations }}
+              />
+            </div>
+          )}
+          {traces && traces.length > 0 && filtered.length === 0 && (
+            <div className="p-6">
+              <EmptyState
+                icon={Activity}
+                title="No matching activity"
+                description="Adjust the crew or status filter to see more trace rows."
+              />
+            </div>
+          )}
+          {filtered.map((trace) => {
+            const row = (
+              <div className="grid gap-3 px-6 py-4 md:grid-cols-[150px_minmax(0,1fr)_120px]">
               <div>
                 <Badge variant="outline" className="rounded-full bg-white font-mono text-[9px] uppercase tracking-[0.14em]">
                   {trace.agentTag}
@@ -131,8 +206,21 @@ export function ActivityPage() {
               <div className="text-right">
                 <StatusPill status={trace.status} />
               </div>
-            </div>
-          ))}
+              </div>
+            );
+
+            return trace.taskId ? (
+              <Link
+                key={trace._id}
+                href={ROUTES.dashboardTask(trace.taskId)}
+                className="block transition-colors hover:bg-[var(--color-surface-2)]"
+              >
+                {row}
+              </Link>
+            ) : (
+              <div key={trace._id}>{row}</div>
+            );
+          })}
         </CardContent>
       </Card>
     </SecondaryPageShell>
@@ -140,12 +228,13 @@ export function ActivityPage() {
 }
 
 export function InvoicesPage() {
-  const tasks = useQuery(api.tasks.list, { workspaceId: WORKSPACE_ID });
-  const invoiceTasks = useMemo(
-    () => tasks?.filter((task) => task.crewTag === "finance") ?? [],
-    [tasks],
-  );
-  const totalCents = invoiceTasks.reduce((sum, task) => sum + task.totalCostCents, 0);
+  const workspaceId = useWorkspaceId();
+  const invoiceTasks = useAuthenticatedQuery(api.tasks.listByCrewTag, {
+    workspaceId,
+    crewTag: "finance",
+  });
+  const invoiceRows = invoiceTasks ?? [];
+  const totalCents = invoiceRows.reduce((sum, task) => sum + task.totalCostCents, 0);
 
   return (
     <SecondaryPageShell>
@@ -154,18 +243,24 @@ export function InvoicesPage() {
         eyebrow="· Invoices"
         title="Finance work queue"
         description="Finance-agent tasks that will back invoice, refund, Stripe, and payment handling views."
-        action={<Link className="rounded-full border border-border bg-white px-4 py-2 text-[12px] font-semibold" href={ROUTES.dashboardOverview}>Back to dashboard</Link>}
       />
 
       <div className="mb-6 grid gap-3 md:grid-cols-3">
-        <MetricCard label="Finance tasks" value={invoiceTasks.length} hint="Tasks routed to the finance crew." />
+        <MetricCard label="Finance tasks" value={invoiceTasks === undefined ? "—" : invoiceRows.length} hint="Tasks routed to the finance crew." />
         <MetricCard label="Run cost" value={money(totalCents)} hint="Total model/tool cost for these rows." />
-        <MetricCard label="Auto resolved" value={invoiceTasks.filter((task) => task.autoResolved).length} hint="Handled without escalation." />
+        <MetricCard label="Auto resolved" value={invoiceTasks === undefined ? "—" : invoiceRows.filter((task) => task.autoResolved).length} hint="Handled without escalation." />
       </div>
 
       <TaskTable
         empty="No finance tasks yet."
-        tasks={invoiceTasks}
+        emptyState={{
+          icon: Receipt,
+          title: "No finance tasks yet",
+          description: "Finance crew handles billing queries, refund requests, and charge lookups. Connect Stripe to activate it.",
+          cta: { label: "Connect Stripe", href: ROUTES.dashboardIntegrations },
+        }}
+        loading={invoiceTasks === undefined}
+        tasks={invoiceRows}
         title="Invoice and payment events"
       />
     </SecondaryPageShell>
@@ -173,10 +268,19 @@ export function InvoicesPage() {
 }
 
 export function TicketsPage() {
-  const tasks = useQuery(api.tasks.list, { workspaceId: WORKSPACE_ID });
+  const workspaceId = useWorkspaceId();
+  const supportTasks = useAuthenticatedQuery(api.tasks.listByCrewTag, {
+    workspaceId,
+    crewTag: "support",
+  });
+  const communityTasks = useAuthenticatedQuery(api.tasks.listByCrewTag, {
+    workspaceId,
+    crewTag: "community",
+  });
+  const ticketsLoading = supportTasks === undefined || communityTasks === undefined;
   const ticketTasks = useMemo(
-    () => tasks?.filter((task) => task.crewTag === "support" || task.crewTag === "community") ?? [],
-    [tasks],
+    () => [...(supportTasks ?? []), ...(communityTasks ?? [])].sort((a, b) => b.createdAt - a.createdAt),
+    [supportTasks, communityTasks],
   );
 
   return (
@@ -186,17 +290,23 @@ export function TicketsPage() {
         eyebrow="· Tickets"
         title="Customer and community tickets"
         description="Support/community tasks that will back ticket triage, status, and escalation workflows."
-        action={<Link className="rounded-full border border-border bg-white px-4 py-2 text-[12px] font-semibold" href={ROUTES.dashboardOverview}>Back to dashboard</Link>}
       />
 
       <div className="mb-6 grid gap-3 md:grid-cols-3">
-        <MetricCard label="Tickets" value={ticketTasks.length} hint="Support and community task rows." />
-        <MetricCard label="Escalated" value={ticketTasks.filter((task) => task.status === "escalated").length} hint="Needs founder decision." />
-        <MetricCard label="Resolved" value={ticketTasks.filter((task) => task.status === "resolved").length} hint="Completed ticket work." />
+        <MetricCard label="Tickets" value={ticketsLoading ? "—" : ticketTasks.length} hint="Support and community task rows." />
+        <MetricCard label="Escalated" value={ticketsLoading ? "—" : ticketTasks.filter((task) => task.status === "escalated").length} hint="Needs founder decision." />
+        <MetricCard label="Resolved" value={ticketsLoading ? "—" : ticketTasks.filter((task) => task.status === "resolved").length} hint="Completed ticket work." />
       </div>
 
       <TaskTable
         empty="No support or community tickets yet."
+        emptyState={{
+          icon: Ticket,
+          title: "No tickets yet",
+          description: "Support and Community crews handle inbound tickets. Connect Intercom or Discord to start routing.",
+          cta: { label: "Connect integrations", href: ROUTES.dashboardIntegrations },
+        }}
+        loading={ticketsLoading}
         tasks={ticketTasks}
         title="Ticket queue"
       />
@@ -206,10 +316,19 @@ export function TicketsPage() {
 
 function TaskTable({
   empty,
+  emptyState,
+  loading = false,
   tasks,
   title,
 }: {
   empty: string;
+  emptyState?: {
+    icon: LucideIcon;
+    title: string;
+    description: string;
+    cta?: { label: string; href: string };
+  };
+  loading?: boolean;
   tasks: Array<{
     _id: Id<"tasks">;
     crewTag: string;
@@ -229,9 +348,22 @@ function TaskTable({
         <CardTitle>{title}</CardTitle>
       </CardHeader>
       <CardContent className="divide-y divide-border/70 p-0">
-        {tasks.length === 0 && <p className="p-6 text-sm text-muted-foreground">{empty}</p>}
+        {loading && <p className="p-6 text-sm text-muted-foreground">Loading tasks...</p>}
+        {!loading && tasks.length === 0 && (
+          <div className="p-6">
+            {emptyState ? (
+              <EmptyState {...emptyState} />
+            ) : (
+              <p className="text-sm text-muted-foreground">{empty}</p>
+            )}
+          </div>
+        )}
         {tasks.map((task) => (
-          <div key={task._id} className="grid gap-3 px-6 py-4 lg:grid-cols-[130px_minmax(0,1fr)_150px_110px]">
+          <Link
+            key={task._id}
+            href={ROUTES.dashboardTask(task._id)}
+            className="grid gap-3 px-6 py-4 transition-colors hover:bg-[var(--color-surface-2)] lg:grid-cols-[130px_minmax(0,1fr)_150px_110px]"
+          >
             <div>
               <Badge variant="outline" className="rounded-full bg-white font-mono text-[9px] uppercase tracking-[0.14em]">
                 {task.crewTag}
@@ -249,7 +381,7 @@ function TaskTable({
             <div className="text-right">
               <StatusPill status={task.status} />
             </div>
-          </div>
+          </Link>
         ))}
       </CardContent>
     </Card>
@@ -257,12 +389,13 @@ function TaskTable({
 }
 
 export function EvalsPage() {
-  const agents = useQuery(api.agents.list, { workspaceId: WORKSPACE_ID });
+  const workspaceId = useWorkspaceId();
+  const agents = useAuthenticatedQuery(api.agents.list, { workspaceId });
   const [agentKey, setAgentKey] = useState<AgentKey>("support");
   const selectedAgent = agents?.find((agent) => agent.tag === agentKey);
-  const cases = useQuery(
+  const cases = useAuthenticatedQuery(
     api.evals.listCasesWithResults,
-    selectedAgent ? { workspaceId: WORKSPACE_ID, agentId: selectedAgent._id } : "skip",
+    selectedAgent ? { workspaceId, agentId: selectedAgent._id } : "skip",
   );
 
   const passed = cases?.filter((item) => item.pass === true).length ?? 0;
@@ -276,7 +409,6 @@ export function EvalsPage() {
         eyebrow="· Eval Score"
         title="Prompt eval results"
         description="Read-only eval view backed by Convex eval cases and latest stored run results."
-        action={<Link className="rounded-full border border-border bg-white px-4 py-2 text-[12px] font-semibold" href={ROUTES.dashboardPrompts}>Open prompts</Link>}
       />
 
       <div className="mb-6 grid gap-3 md:grid-cols-3">
@@ -311,11 +443,25 @@ export function EvalsPage() {
         <CardContent className="divide-y divide-border/70 p-0">
           {agents === undefined && <p className="p-6 text-sm text-muted-foreground">Loading agents...</p>}
           {agents !== undefined && !selectedAgent && (
-            <p className="p-6 text-sm text-muted-foreground">No matching agent exists yet. Create one from the dashboard command input.</p>
+            <div className="p-6">
+              <EmptyState
+                icon={ListChecks}
+                title="No matching agent yet"
+                description="Create an agent from the dashboard command input before running eval cases."
+                cta={{ label: "Open dashboard", href: ROUTES.dashboardOverview }}
+              />
+            </div>
           )}
           {selectedAgent && cases === undefined && <p className="p-6 text-sm text-muted-foreground">Loading eval cases...</p>}
           {selectedAgent && cases?.length === 0 && (
-            <p className="p-6 text-sm text-muted-foreground">No eval cases stored for this agent yet.</p>
+            <div className="p-6">
+              <EmptyState
+                icon={ListChecks}
+                title="No eval cases yet"
+                description="Eval cases are created when you run evaluations from the Prompts page."
+                cta={{ label: "Open Prompts", href: ROUTES.dashboardPrompts }}
+              />
+            </div>
           )}
           {cases?.map((item) => (
             <div key={item._id} className="grid gap-3 px-6 py-4 md:grid-cols-[minmax(0,1fr)_120px_120px]">

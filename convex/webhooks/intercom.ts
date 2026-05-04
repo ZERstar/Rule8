@@ -1,6 +1,6 @@
 import { httpAction } from "../_generated/server";
 import { internal } from "../_generated/api";
-import { WORKSPACE_ID } from "../../lib/constants";
+import { DEMO_WORKSPACE_ID } from "../../lib/constants";
 
 type IntercomPayload = {
   data?: {
@@ -84,31 +84,34 @@ export const intercomWebhook = httpAction(async (ctx, request) => {
 
   // Ensure overseer and crew leads exist
   await ctx.runMutation(internal.agents.initializeOverseer, {
-    workspaceId: WORKSPACE_ID,
+    workspaceId: DEMO_WORKSPACE_ID,
   });
 
   await ctx.runMutation(internal.agents.initializeCrewLeads, {
-    workspaceId: WORKSPACE_ID,
+    workspaceId: DEMO_WORKSPACE_ID,
   });
 
-  const taskId = await ctx.runMutation(internal.tasks.createInboundIntercomTask, {
-    workspaceId: WORKSPACE_ID,
+  const result = await ctx.runMutation(internal.tasks.createInboundIntercomTask, {
+    workspaceId: DEMO_WORKSPACE_ID,
     externalId: item.id,
     summary,
     rawPayload: rawBody,
     userEmail: email,
   });
+  const { taskId, created } = result;
 
-  await ctx.scheduler.runAfter(0, internal.agent_runner.overseer.routeTask, {
-    taskId,
-    workspaceId: WORKSPACE_ID,
-  });
+  if (created) {
+    await ctx.scheduler.runAfter(0, internal.agent_runner.overseer.routeTask, {
+      taskId,
+      workspaceId: DEMO_WORKSPACE_ID,
+    });
+  }
 
   return Response.json(
     {
       ok: true,
       taskId,
-      status: "queued",
+      status: created ? "queued" : "duplicate",
     },
     { status: 202 },
   );

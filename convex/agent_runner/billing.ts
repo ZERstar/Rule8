@@ -2,8 +2,13 @@ import { v } from "convex/values";
 
 import { internal } from "../_generated/api";
 import { internalAction } from "../_generated/server";
-import { runAgentModel, type RunAgentModelResult } from "../../lib/anthropic";
 import { buildWorkerSystemPrompt } from "../../lib/agents/prompts";
+import { runAgenticToolLoop, type AgenticLoopResult } from "../../lib/agents/tool-loop";
+import {
+  executeToolCall,
+  isToolResultError,
+  type IntegrationConfigMap,
+} from "../../lib/agents/tool-executor";
 import { FINANCE_TOOLS } from "../../lib/agents/tools";
 import {
   lookupStripeBillingContext,
@@ -32,6 +37,26 @@ function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
 }
 
+function isTransientError(message: string) {
+  return /(timeout|timed out|etimedout|rate limit|429|500|502|503|504|temporary|econnreset|econnrefused|fetch failed|network)/i.test(message);
+}
+
+async function sendIntercomReply(args: {
+  configs: IntegrationConfigMap;
+  conversationId?: string;
+  message: string;
+}) {
+  const result = await executeToolCall(
+    "intercom_reply",
+    { conversationId: args.conversationId, message: args.message },
+    args.configs,
+  );
+  return {
+    result,
+    status: isToolResultError(result) ? "error" as const : "ok" as const,
+  };
+}
+
 export const handleTask = internalAction({
   args: {
     taskId: v.id("tasks"),
@@ -39,7 +64,7 @@ export const handleTask = internalAction({
     workspaceId: v.string(),
   },
   handler: async (ctx, args) => {
-    const task = await ctx.runQuery(internal.tasks.getById, { taskId: args.taskId });
+    const task = await ctx.runQuery(internal.tasks.getByIdInternal, { taskId: args.taskId });
     if (!task || !task.assignedAgentId) {
       throw new Error("Assigned billing task was not found or has no assigned agent.");
     }
@@ -56,6 +81,54 @@ export const handleTask = internalAction({
     if (!assignedAgent) {
       throw new Error("Finance crew lead not found for billing task.");
     }
+
+    await ctx.runMutation(internal.agents.setStatus, {
+      agentId: assignedAgent._id,
+      status: "running",
+    });
+
+    try {
+      const contextRows = await ctx.runQuery(internal.productContext.listAllInternal, {
+        workspaceId: args.workspaceId,
+      });
+      const integrationConfigs: IntegrationConfigMap = await ctx.runQuery(
+        internal.integrations.listConfigs,
+        { workspaceId: args.workspaceId },
+      );
+      const contextMap = Object.fromEntries(contextRows.map((row) => [row.key, row.value]));
+      const systemPrompt = buildWorkerSystemPrompt({
+        agentName: assignedAgent.name,
+        crewName: assignedAgent.crewName,
+        description: assignedAgent.description,
+        productDescription: contextMap.product_description,
+        refundPolicy: contextMap.refund_policy,
+        escalationRules: contextMap.escalation_rules,
+        agentTone: contextMap.agent_tone,
+        connectedProviders: assignedAgent.integrationNames,
+      });
+
+      await ctx.runMutation(internal.traces.recordInternal, {
+        runId: args.runId,
+        taskId: task._id,
+        agentId: assignedAgent._id,
+        agentTag: "finance",
+        crewTag: "finance",
+        crewName: assignedAgent.crewName,
+        action: `${assignedAgent.name} prepared billing prompt context. PRODUCT: ${contextMap.product_description ?? "unset"} REFUND POLICY: ${contextMap.refund_policy ?? "unset"} ESCALATION RULES: ${contextMap.escalation_rules ?? "unset"}`,
+        stepType: "llm_call",
+        model: assignedAgent.modelId,
+        status: "ok",
+        toolName: undefined,
+        toolOutputPreview: undefined,
+        tokensIn: 0,
+        tokensOut: 0,
+        costCents: 0,
+        latencyMs: 0,
+        cacheHit: false,
+        cacheTokens: 0,
+        confidence: 0.88,
+        workspaceId: args.workspaceId,
+      });
 
     // US-17: Load episodic context from prior interactions with this user
     let episodicContext = "";
@@ -145,7 +218,7 @@ export const handleTask = internalAction({
     const lookup = await lookupStripeBillingContext({
       email: customerEmail,
       summary: task.summary,
-    });
+    }, integrationConfigs.stripe ?? {});
 
     await ctx.runMutation(internal.traces.recordInternal, {
       runId: args.runId,
@@ -172,6 +245,13 @@ export const handleTask = internalAction({
 
     if (!lookup.duplicateDetected || !lookup.chargeId || !lookup.amountCents) {
       const resolution = `We reviewed your billing history but did not find an automatic duplicate-charge refund candidate for ${customerEmail}. A human review can be requested if you want us to inspect the account manually.`;
+      const outbound = task.source === "intercom"
+        ? await sendIntercomReply({
+          configs: integrationConfigs,
+          conversationId: task.externalId,
+          message: resolution,
+        })
+        : null;
 
       await ctx.runMutation(internal.traces.recordInternal, {
         runId: args.runId,
@@ -180,12 +260,14 @@ export const handleTask = internalAction({
         agentTag: "finance",
         crewTag: "finance",
         crewName: assignedAgent.crewName,
-        action: `${assignedAgent.name} prepared a billing follow-up without issuing a refund.`,
+        action: outbound
+          ? `Delivered billing follow-up for task ${task.externalId ?? task._id}.`
+          : `${assignedAgent.name} prepared a billing follow-up without issuing a refund.`,
         stepType: "resolution",
         model: assignedAgent.modelId,
-        status: "ok",
-        toolName: "intercom_reply",
-        toolOutputPreview: resolution.slice(0, 160),
+        status: outbound?.status ?? "ok",
+        toolName: outbound ? "intercom_reply" : undefined,
+        toolOutputPreview: (outbound?.result ?? resolution).slice(0, 160),
         tokensIn: 0,
         tokensOut: 0,
         costCents: 0,
@@ -195,6 +277,10 @@ export const handleTask = internalAction({
         confidence: 0.72,
         workspaceId: args.workspaceId,
       });
+
+      if (outbound?.status === "error") {
+        throw new Error(outbound.result);
+      }
 
       await ctx.runMutation(internal.tasks.resolveTaskInternal, {
         taskId: task._id,
@@ -253,7 +339,7 @@ export const handleTask = internalAction({
     const refund = await refundStripeCharge({
       chargeId: lookup.chargeId,
       amountCents: lookup.amountCents,
-    });
+    }, integrationConfigs.stripe ?? {});
 
     await ctx.runMutation(internal.traces.recordInternal, {
       runId: args.runId,
@@ -278,18 +364,27 @@ export const handleTask = internalAction({
       workspaceId: args.workspaceId,
     });
 
-    let modelResult: RunAgentModelResult;
+    let modelResult: AgenticLoopResult;
     try {
-      modelResult = await runAgentModel({
-        systemPrompt: buildWorkerSystemPrompt({
-          agentName: assignedAgent.name,
-          crewName: assignedAgent.crewName,
-          description: assignedAgent.description,
-        }),
+      modelResult = await runAgenticToolLoop({
+        ctx,
+        runId: args.runId,
+        taskId: task._id,
+        agentId: assignedAgent._id,
+        agentTag: "finance",
+        crewTag: "finance",
+        crewName: assignedAgent.crewName,
+        modelId: assignedAgent.modelId,
+        agentName: assignedAgent.name,
+        workspaceId: args.workspaceId,
+        systemPrompt,
         userPrompt: `Task summary:\n${task.summary}\n\nStripe lookup:\n${lookup.reason}\nRefund result:\n${refund.refundId} for $${(refund.amountCents / 100).toFixed(2)}${episodicContext}`,
         maxTokens: 320,
         tools: FINANCE_TOOLS,
         mockText: getBillingFallback(task.summary, true, refund.amountCents),
+        toolDefaults: {
+          intercom_reply: { conversationId: task.externalId },
+        },
       });
     } catch (error: unknown) {
       const reason = `AI model failed while drafting billing response: ${errorMessage(error)}`;
@@ -317,12 +412,47 @@ export const handleTask = internalAction({
         workspaceId: args.workspaceId,
       });
 
-      await ctx.runMutation(internal.tasks.failTaskInternal, {
+      throw new Error(reason);
+    }
+
+    let outboundResult = modelResult.toolExecutions.find(
+      (tool) => tool.name === "intercom_reply" && tool.status === "ok",
+    )?.result;
+
+    if (task.source === "intercom" && !outboundResult) {
+      const outbound = await sendIntercomReply({
+        configs: integrationConfigs,
+        conversationId: task.externalId,
+        message: modelResult.text,
+      });
+      outboundResult = outbound.result;
+
+      await ctx.runMutation(internal.traces.recordInternal, {
+        runId: args.runId,
         taskId: task._id,
-        reason,
+        agentId: assignedAgent._id,
+        agentTag: "finance",
+        crewTag: "finance",
+        crewName: assignedAgent.crewName,
+        action: `Delivered billing response for task ${task.externalId ?? task._id}.`,
+        stepType: "tool_call",
+        model: modelResult.model,
+        status: outbound.status,
+        toolName: "intercom_reply",
+        toolOutputPreview: outbound.result.slice(0, 200),
+        tokensIn: 0,
+        tokensOut: 0,
+        costCents: 0,
+        latencyMs: 120,
+        cacheHit: false,
+        cacheTokens: 0,
+        confidence: outbound.status === "ok" ? 0.92 : 0.2,
+        workspaceId: args.workspaceId,
       });
 
-      throw new Error(reason);
+      if (outbound.status === "error") {
+        throw new Error(outbound.result);
+      }
     }
 
     await ctx.runMutation(internal.traces.recordInternal, {
@@ -332,35 +462,14 @@ export const handleTask = internalAction({
       agentTag: "finance",
       crewTag: "finance",
       crewName: assignedAgent.crewName,
-      action: `${assignedAgent.name} drafted the final billing response after Stripe actions.`,
-      stepType: "llm_call",
-      model: modelResult.model,
-      status: "ok",
-      toolName: undefined,
-      toolOutputPreview: undefined,
-      tokensIn: modelResult.tokensIn,
-      tokensOut: modelResult.tokensOut,
-      costCents: modelResult.costCents,
-      latencyMs: modelResult.latencyMs,
-      cacheHit: modelResult.cacheHit,
-      cacheTokens: modelResult.cacheTokens,
-      confidence: 0.91,
-      workspaceId: args.workspaceId,
-    });
-
-    await ctx.runMutation(internal.traces.recordInternal, {
-      runId: args.runId,
-      taskId: task._id,
-      agentId: assignedAgent._id,
-      agentTag: "finance",
-      crewTag: "finance",
-      crewName: assignedAgent.crewName,
-      action: `Sent billing resolution for task ${task.externalId ?? task._id}.`,
+      action: outboundResult
+        ? `Confirmed billing response delivery for task ${task.externalId ?? task._id}.`
+        : `${assignedAgent.name} prepared a billing resolution for task ${task._id}.`,
       stepType: "resolution",
       model: modelResult.model,
       status: "ok",
-      toolName: "intercom_reply",
-      toolOutputPreview: modelResult.text.slice(0, 160),
+      toolName: outboundResult ? "intercom_reply" : undefined,
+      toolOutputPreview: (outboundResult ?? modelResult.text).slice(0, 160),
       tokensIn: 0,
       tokensOut: 0,
       costCents: 0,
@@ -384,5 +493,42 @@ export const handleTask = internalAction({
       resolution: modelResult.text,
       refundId: refund.refundId,
     };
+    } catch (error: unknown) {
+      const message = errorMessage(error);
+      const transient = isTransientError(message);
+
+      await ctx.runMutation(internal.tasks.scheduleRetry, {
+        taskId: args.taskId,
+        error: message,
+        failureMode: transient ? "transient" : "permanent",
+      });
+
+      if (transient) {
+        const updatedTask = await ctx.runQuery(internal.tasks.getByIdInternal, {
+          taskId: args.taskId,
+        });
+        if (updatedTask?.status === "pending" && updatedTask.nextRetryAt) {
+          await ctx.scheduler.runAfter(
+            Math.max(0, updatedTask.nextRetryAt - Date.now()),
+            internal.agent_runner.billing.handleTask,
+            {
+              taskId: args.taskId,
+              runId: `${args.runId}-retry-${updatedTask.retryCount ?? 0}`,
+              workspaceId: args.workspaceId,
+            },
+          );
+        }
+      }
+
+      return {
+        status: transient ? "retry_scheduled" as const : "failed" as const,
+        reason: message,
+      };
+    } finally {
+      await ctx.runMutation(internal.agents.setStatus, {
+        agentId: assignedAgent._id,
+        status: "idle",
+      });
+    }
   },
 });

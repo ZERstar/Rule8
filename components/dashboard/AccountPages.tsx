@@ -2,14 +2,18 @@
 
 import type { ReactNode } from "react";
 import Link from "next/link";
+import { useMutation } from "convex/react";
 import { Bell, Check, MonitorCog, ShieldCheck, SlidersHorizontal, UserRound } from "lucide-react";
 
+import { api } from "@/convex/_generated/api";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PageHeader } from "@/components/dashboard/PageHeader";
 import { SecondaryPageShell } from "@/components/dashboard/SecondaryPageShell";
 import { authClient } from "@/lib/auth-client";
 import { ROUTES } from "@/lib/routes";
+import { useAuthenticatedQuery } from "@/lib/use-authenticated-query";
+import { useWorkspaceId } from "@/lib/workspace-context";
 
 function initialsFor(name?: string | null) {
   return (
@@ -27,14 +31,21 @@ function SettingRow({
   enabled = true,
   icon,
   label,
+  onChange,
 }: {
   description: string;
   enabled?: boolean;
   icon: ReactNode;
   label: string;
+  onChange?: () => void;
 }) {
   return (
-    <div className="flex items-center justify-between gap-4 rounded-[24px] border border-border/70 bg-white/74 px-4 py-4">
+    <button
+      type="button"
+      onClick={onChange}
+      className="flex w-full items-center justify-between gap-4 rounded-[24px] border border-border/70 bg-white/74 px-4 py-4 text-left transition-colors hover:bg-white disabled:cursor-not-allowed disabled:opacity-70"
+      disabled={!onChange}
+    >
       <div className="flex min-w-0 items-center gap-3">
         <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[var(--color-bg-secondary)] text-[var(--color-t2)]">
           {icon}
@@ -55,7 +66,7 @@ function SettingRow({
           }`}
         />
       </span>
-    </div>
+    </button>
   );
 }
 
@@ -125,6 +136,15 @@ export function ProfilePage() {
 }
 
 export function SettingsPage() {
+  const workspaceId = useWorkspaceId();
+  const prefs = useAuthenticatedQuery(api.userPreferences.get, { workspaceId });
+  const updatePref = useMutation(api.userPreferences.update);
+
+  function toggle(key: "escalationNotifications" | "compactMode" | "commandSuggestions") {
+    if (!prefs) return;
+    void updatePref({ workspaceId, [key]: !prefs[key] });
+  }
+
   return (
     <SecondaryPageShell contentClassName="max-w-[1180px]">
       <PageHeader
@@ -148,17 +168,22 @@ export function SettingsPage() {
               icon={<Bell className="h-4 w-4" />}
               label="Escalation notifications"
               description="Surface urgent agent escalations in the executive panel."
+              enabled={prefs?.escalationNotifications ?? true}
+              onChange={() => toggle("escalationNotifications")}
             />
             <SettingRow
               icon={<MonitorCog className="h-4 w-4" />}
               label="Compact dashboard mode"
               description="Keep chamber controls dense for high-frequency operations."
-              enabled={false}
+              enabled={prefs?.compactMode ?? false}
+              onChange={() => toggle("compactMode")}
             />
             <SettingRow
               icon={<SlidersHorizontal className="h-4 w-4" />}
               label="Command suggestions"
               description="Show clarify, notify, and route shortcuts in the profile workflow."
+              enabled={prefs?.commandSuggestions ?? true}
+              onChange={() => toggle("commandSuggestions")}
             />
           </CardContent>
         </Card>

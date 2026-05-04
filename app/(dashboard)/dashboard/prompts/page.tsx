@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useQuery, useMutation } from "convex/react";
+import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
-import { WORKSPACE_ID } from "@/lib/constants";
+import { useAuthenticatedQuery } from "@/lib/use-authenticated-query";
+import { useWorkspaceId } from "@/lib/workspace-context";
 import { InfoListCard } from "@/components/dashboard/InfoListCard";
 import { PageHeader } from "@/components/dashboard/PageHeader";
 import { SecondaryPageShell } from "@/components/dashboard/SecondaryPageShell";
@@ -76,7 +77,8 @@ function StudioMetric({
 }
 
 export default function PromptsPage() {
-  const allAgents = useQuery(api.agents.list, { workspaceId: WORKSPACE_ID });
+  const workspaceId = useWorkspaceId();
+  const allAgents = useAuthenticatedQuery(api.agents.list, { workspaceId });
   const updatePrompt = useMutation(api.agents.updatePrompt);
 
   const [agentTag,   setAgentTag]  = useState<AgentKey>("support");
@@ -86,13 +88,13 @@ export default function PromptsPage() {
 
   const activeAgent = allAgents?.find((a) => a.tag === agentTag);
   const version = activeAgent?.promptVersion ?? 1;
-  const storedEvalCases = useQuery(
+  const storedEvalCases = useAuthenticatedQuery(
     api.evals.listCasesWithResults,
-    activeAgent ? { workspaceId: WORKSPACE_ID, agentId: activeAgent._id } : "skip",
+    activeAgent ? { workspaceId, agentId: activeAgent._id } : "skip",
   );
-  const storedVersions = useQuery(
+  const storedVersions = useAuthenticatedQuery(
     api.agents.listPromptVersions,
-    activeAgent ? { workspaceId: WORKSPACE_ID, agentId: activeAgent._id, limit: 5 } : "skip",
+    activeAgent ? { workspaceId, agentId: activeAgent._id, limit: 5 } : "skip",
   );
 
   useEffect(() => {

@@ -19,6 +19,8 @@ type RunAgentModelArgs = {
 
 export type RunAgentModelResult = {
   text: string;
+  toolCalls: ToolCall[];
+  stopReason: "end_turn" | "tool_use" | "max_tokens" | "error";
   model: string;
   tokensIn: number;
   tokensOut: number;
@@ -27,6 +29,12 @@ export type RunAgentModelResult = {
   cacheHit: boolean;
   cacheTokens: number;
   mocked: boolean;
+};
+
+export type ToolCall = {
+  id: string;
+  name: string;
+  input: Record<string, unknown>;
 };
 
 function estimateTokens(text: string) {
@@ -56,6 +64,24 @@ function collectResponseText(content: unknown) {
     .trim();
 }
 
+function collectAnthropicToolCalls(content: unknown): ToolCall[] {
+  if (!Array.isArray(content)) return [];
+
+  return content.flatMap((block): ToolCall[] => {
+    if (typeof block !== "object" || block === null) return [];
+    const maybeBlock = block as { type?: string; id?: string; name?: string; input?: unknown };
+    if (maybeBlock.type !== "tool_use" || !maybeBlock.id || !maybeBlock.name) return [];
+    return [{
+      id: maybeBlock.id,
+      name: maybeBlock.name,
+      input:
+        typeof maybeBlock.input === "object" && maybeBlock.input !== null
+          ? maybeBlock.input as Record<string, unknown>
+          : {},
+    }];
+  });
+}
+
 function collectChatCompletionText(content: unknown) {
   if (typeof content === "string") {
     return content.trim();
@@ -80,6 +106,48 @@ function collectChatCompletionText(content: unknown) {
     })
     .join("\n")
     .trim();
+}
+
+function collectChatCompletionToolCalls(toolCalls: unknown): ToolCall[] {
+  if (!Array.isArray(toolCalls)) return [];
+
+  return toolCalls.flatMap((toolCall): ToolCall[] => {
+    if (typeof toolCall !== "object" || toolCall === null) return [];
+    const maybeToolCall = toolCall as {
+      id?: string;
+      function?: { name?: string; arguments?: string };
+    };
+    const name = maybeToolCall.function?.name;
+    if (!name) return [];
+
+    let input: Record<string, unknown> = {};
+    const rawArgs = maybeToolCall.function?.arguments;
+    if (rawArgs) {
+      try {
+        const parsed = JSON.parse(rawArgs) as unknown;
+        input = typeof parsed === "object" && parsed !== null ? parsed as Record<string, unknown> : {};
+      } catch {
+        input = {};
+      }
+    }
+
+    return [{
+      id: maybeToolCall.id ?? `${name}-${Date.now()}`,
+      name,
+      input,
+    }];
+  });
+}
+
+function toOpenAiTools(tools?: AgentToolDefinition[]) {
+  return tools?.map((tool) => ({
+    type: "function",
+    function: {
+      name: tool.name,
+      description: tool.description,
+      parameters: tool.input_schema,
+    },
+  }));
 }
 
 function getProvider(nvidiaApiKey?: string) {
@@ -130,6 +198,8 @@ function mockResult(
 
   return {
     text: args.mockText,
+    toolCalls: [],
+    stopReason: "end_turn",
     model,
     tokensIn,
     tokensOut,
@@ -168,6 +238,7 @@ export async function runAgentModel(args: RunAgentModelArgs): Promise<RunAgentMo
               { role: "user", content: args.userPrompt },
             ],
             max_tokens: args.maxTokens ?? 1024,
+            tools: toOpenAiTools(args.tools),
           }),
           signal: AbortSignal.timeout(getModelTimeoutMs()),
         });
@@ -181,8 +252,10 @@ export async function runAgentModel(args: RunAgentModelArgs): Promise<RunAgentMo
         const body = (await response.json()) as {
           model?: string;
           choices?: Array<{
+            finish_reason?: string;
             message?: {
               content?: unknown;
+              tool_calls?: unknown;
             };
           }>;
           usage?: {
@@ -191,8 +264,10 @@ export async function runAgentModel(args: RunAgentModelArgs): Promise<RunAgentMo
           };
         };
 
-        const extractedText = collectChatCompletionText(body.choices?.[0]?.message?.content);
-        if (!extractedText) {
+        const choice = body.choices?.[0];
+        const extractedText = collectChatCompletionText(choice?.message?.content);
+        const toolCalls = collectChatCompletionToolCalls(choice?.message?.tool_calls);
+        if (!extractedText && toolCalls.length === 0) {
           console.error("NVIDIA API: Failed to extract text from response", JSON.stringify(body));
           continue;
         }
@@ -203,6 +278,13 @@ export async function runAgentModel(args: RunAgentModelArgs): Promise<RunAgentMo
 
         return {
           text: extractedText,
+          toolCalls,
+          stopReason:
+            choice?.finish_reason === "tool_calls"
+              ? "tool_use"
+              : choice?.finish_reason === "length"
+                ? "max_tokens"
+                : "end_turn",
           model: body.model ?? candidateModel,
           tokensIn,
           tokensOut,
@@ -268,6 +350,7 @@ export async function runAgentModel(args: RunAgentModelArgs): Promise<RunAgentMo
   const body = (await response.json()) as {
     content?: unknown;
     model?: string;
+    stop_reason?: "end_turn" | "tool_use" | "max_tokens" | string;
     usage?: {
       input_tokens?: number;
       output_tokens?: number;
@@ -276,7 +359,8 @@ export async function runAgentModel(args: RunAgentModelArgs): Promise<RunAgentMo
   };
 
   const text = collectResponseText(body.content);
-  if (!text) {
+  const toolCalls = collectAnthropicToolCalls(body.content);
+  if (!text && toolCalls.length === 0) {
     if (mockResponsesEnabled(args)) {
       return mockResult(args, model, startedAt);
     }
@@ -290,6 +374,13 @@ export async function runAgentModel(args: RunAgentModelArgs): Promise<RunAgentMo
 
   return {
     text,
+    toolCalls,
+    stopReason:
+      body.stop_reason === "tool_use"
+        ? "tool_use"
+        : body.stop_reason === "max_tokens"
+          ? "max_tokens"
+          : "end_turn",
     model: body.model ?? model,
     tokensIn,
     tokensOut,

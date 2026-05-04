@@ -1,3 +1,5 @@
+import type { IntegrationConfig } from "./types";
+
 type LookupStripeBillingContextArgs = {
   email: string;
   summary: string;
@@ -35,8 +37,8 @@ function shouldTreatAsDuplicate(summary: string) {
   return /(charged twice|duplicate charge|double charge|refund)/i.test(summary);
 }
 
-function getStripeSecretKey() {
-  return process.env.STRIPE_SECRET_KEY ?? "";
+function getStripeSecretKey(config?: IntegrationConfig) {
+  return config?.accessToken ?? process.env.STRIPE_SECRET_KEY ?? "";
 }
 
 function getAuthHeader(secretKey: string) {
@@ -45,8 +47,9 @@ function getAuthHeader(secretKey: string) {
 
 export async function lookupStripeBillingContext(
   args: LookupStripeBillingContextArgs,
+  config?: IntegrationConfig,
 ): Promise<StripeLookupResult> {
-  const secretKey = getStripeSecretKey();
+  const secretKey = getStripeSecretKey(config);
 
   if (!secretKey) {
     const amountCents = parseRequestedAmountCents(args.summary);
@@ -146,8 +149,9 @@ export async function lookupStripeBillingContext(
 export async function refundStripeCharge(args: {
   chargeId: string;
   amountCents: number;
-}): Promise<StripeRefundResult> {
-  const secretKey = getStripeSecretKey();
+  reason?: string;
+}, config?: IntegrationConfig): Promise<StripeRefundResult> {
+  const secretKey = getStripeSecretKey(config);
 
   if (!secretKey) {
     return {
@@ -163,6 +167,8 @@ export async function refundStripeCharge(args: {
     charge: args.chargeId,
     amount: String(args.amountCents),
   });
+  if (args.reason) body.set("reason", args.reason);
+
   const response = await fetch("https://api.stripe.com/v1/refunds", {
     method: "POST",
     headers: {
@@ -173,7 +179,8 @@ export async function refundStripeCharge(args: {
   });
 
   if (!response.ok) {
-    throw new Error(`Stripe refund failed with status ${response.status}`);
+    const text = await response.text();
+    throw new Error(`Stripe refund failed with status ${response.status}: ${text.slice(0, 200)}`);
   }
 
   const refund = (await response.json()) as {
@@ -190,4 +197,64 @@ export async function refundStripeCharge(args: {
     chargeId: refund.charge,
     status: refund.status ?? "pending",
   };
+}
+
+export async function executeStripeLookup(
+  input: { userEmail: string; summary?: string },
+  config: IntegrationConfig,
+): Promise<string> {
+  const email = input.userEmail;
+  if (!email) return "Stripe lookup requires userEmail.";
+
+  const result = await lookupStripeBillingContext(
+    { email, summary: input.summary ?? "" },
+    config,
+  );
+
+  return [
+    `mode=${result.mode}`,
+    `duplicateDetected=${result.duplicateDetected}`,
+    result.customerId ? `customerId=${result.customerId}` : undefined,
+    `customerEmail=${result.customerEmail}`,
+    result.chargeId ? `chargeId=${result.chargeId}` : undefined,
+    result.amountCents ? `amountCents=${result.amountCents}` : undefined,
+    `reason=${result.reason}`,
+  ].filter(Boolean).join("; ");
+}
+
+export async function executeStripeRefund(
+  input: { chargeId: string; amountCents: number; reason?: string },
+  config: IntegrationConfig,
+): Promise<string> {
+  if (!input.chargeId) return "Stripe refund requires chargeId.";
+  if (!input.amountCents) return "Stripe refund requires amountCents.";
+
+  const refund = await refundStripeCharge(
+    {
+      chargeId: input.chargeId,
+      amountCents: input.amountCents,
+      reason: input.reason,
+    },
+    config,
+  );
+
+  return `Refund created: ${refund.refundId} - $${(refund.amountCents / 100).toFixed(2)} - status: ${refund.status}`;
+}
+
+export async function testStripeConnection(config: IntegrationConfig): Promise<string | null> {
+  const secretKey = getStripeSecretKey(config);
+  if (!secretKey) return "No secret key provided.";
+
+  const res = await fetch("https://api.stripe.com/v1/balance", {
+    headers: {
+      authorization: getAuthHeader(secretKey),
+    },
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    return `Token invalid (${res.status}): ${text.slice(0, 200)}`;
+  }
+
+  return null;
 }

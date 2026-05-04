@@ -1,11 +1,12 @@
 "use client";
 
 import { KeyboardEvent, useEffect, useRef } from "react";
-import { useQuery } from "convex/react";
 
 import { api } from "@/convex/_generated/api";
-import { CREW_META, WORKSPACE_ID } from "@/lib/constants";
+import { CREW_META } from "@/lib/constants";
 import type { CrewKey, ExecutiveChatMessage } from "@/lib/dashboard";
+import { useAuthenticatedQuery } from "@/lib/use-authenticated-query";
+import { useWorkspaceId } from "@/lib/workspace-context";
 
 const STATUS_COLOR: Record<string, string> = {
   active: "var(--color-accent-green)",
@@ -60,11 +61,12 @@ export function CrewDetail({
   onExecInputChange,
   onExecSend,
 }: CrewDetailProps) {
+  const workspaceId = useWorkspaceId();
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const agents = useQuery(api.agents.list, { workspaceId: WORKSPACE_ID });
-  const crewStats = useQuery(api.tasks.getCrewStats, {
-    workspaceId: WORKSPACE_ID,
+  const agents = useAuthenticatedQuery(api.agents.list, { workspaceId });
+  const crewStats = useAuthenticatedQuery(api.tasks.getCrewStats, {
+    workspaceId,
     crewTag: selectedCrew,
   });
 

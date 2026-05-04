@@ -1,8 +1,10 @@
-import { action, internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import { v } from "convex/values";
+import { internal } from "./_generated/api";
+import { action, internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
 
 const ONE_DAY_MS = 1000 * 60 * 60 * 24;
+const MAX_RETRIES = 3;
 
 const crewTagValidator = v.union(
   v.literal("executive"),
@@ -11,10 +13,36 @@ const crewTagValidator = v.union(
   v.literal("community"),
 );
 
-export const getById = internalQuery({
+const failureModeValidator = v.union(
+  v.literal("transient"),
+  v.literal("permanent"),
+);
+
+export const getByIdInternal = internalQuery({
   args: { taskId: v.id("tasks") },
   handler: async (ctx, args) => {
     return await ctx.db.get(args.taskId);
+  },
+});
+
+export const getById = query({
+  args: { taskId: v.id("tasks") },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("Unauthenticated");
+
+    const task = await ctx.db.get(args.taskId);
+    if (!task) return null;
+
+    const workspace = await ctx.db
+      .query("workspaces")
+      .withIndex("by_owner", (q) => q.eq("ownerUserId", identity.tokenIdentifier))
+      .unique();
+    if (!workspace || workspace._id !== task.workspaceId) {
+      throw new Error("Unauthorized");
+    }
+
+    return task;
   },
 });
 
@@ -24,16 +52,18 @@ export const getByExternalId = query({
     externalId: v.string(),
   },
   handler: async (ctx, args) => {
+    await ctx.runQuery(internal.workspaces.assertOwned, { workspaceId: args.workspaceId });
+
     const tasks = await ctx.db
       .query("tasks")
-      .withIndex("by_workspace_and_created_at", (q) => q.eq("workspaceId", args.workspaceId))
-      .collect();
+      .withIndex("by_workspace_external_id", (q) =>
+        q.eq("workspaceId", args.workspaceId).eq("externalId", args.externalId),
+      )
+      .unique();
 
-    return tasks.find((task) => task.externalId === args.externalId) ?? null;
+    return tasks ?? null;
   },
 });
-
-import { internal } from "./_generated/api";
 
 export const createManualTask = internalMutation({
   args: {
@@ -70,8 +100,7 @@ export const submitManualTask = action({
     summary: v.string(),
   },
   handler: async (ctx, args): Promise<Id<"tasks">> => {
-    // In a real app we might check ctx.auth.getUserIdentity() here
-    // But since it's gated at the Next.js layout layer, we'll just run it.
+    await ctx.runQuery(internal.workspaces.assertOwned, { workspaceId: args.workspaceId });
 
     // Ensure overseer and crew leads exist
     await ctx.runMutation(internal.agents.initializeOverseer, {
@@ -105,9 +134,19 @@ export const createInboundIntercomTask = internalMutation({
     userEmail: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    if (args.externalId) {
+      const existing = await ctx.db
+        .query("tasks")
+        .withIndex("by_workspace_external_id", (q) =>
+          q.eq("workspaceId", args.workspaceId).eq("externalId", args.externalId),
+        )
+        .unique();
+      if (existing) return { taskId: existing._id, created: false };
+    }
+
     const now = Date.now();
 
-    return await ctx.db.insert("tasks", {
+    const taskId = await ctx.db.insert("tasks", {
       source: "intercom",
       externalId: args.externalId,
       summary: args.summary,
@@ -127,6 +166,8 @@ export const createInboundIntercomTask = internalMutation({
       createdAt: now,
       completedAt: undefined,
     });
+
+    return { taskId, created: true };
   },
 });
 
@@ -139,9 +180,19 @@ export const createInboundDiscordTask = internalMutation({
     userEmail: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    if (args.externalId) {
+      const existing = await ctx.db
+        .query("tasks")
+        .withIndex("by_workspace_external_id", (q) =>
+          q.eq("workspaceId", args.workspaceId).eq("externalId", args.externalId),
+        )
+        .unique();
+      if (existing) return { taskId: existing._id, created: false };
+    }
+
     const now = Date.now();
 
-    return await ctx.db.insert("tasks", {
+    const taskId = await ctx.db.insert("tasks", {
       source: "discord",
       externalId: args.externalId,
       summary: args.summary,
@@ -161,6 +212,8 @@ export const createInboundDiscordTask = internalMutation({
       createdAt: now,
       completedAt: undefined,
     });
+
+    return { taskId, created: true };
   },
 });
 
@@ -183,6 +236,23 @@ export const getRecentByUserEmail = internalQuery({
     return tasks
       .filter((t) => t._id !== args.excludeTaskId)
       .slice(0, args.limit);
+  },
+});
+
+export const listSince = internalQuery({
+  args: {
+    workspaceId: v.string(),
+    since: v.number(),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("tasks")
+      .withIndex("by_workspace_and_created_at", (q) =>
+        q.eq("workspaceId", args.workspaceId).gte("createdAt", args.since),
+      )
+      .order("desc")
+      .take(args.limit ?? 500);
   },
 });
 
@@ -232,6 +302,9 @@ export const escalateTaskInternal = internalMutation({
     latencyMs: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
+    const task = await ctx.db.get(args.taskId);
+    if (!task) throw new Error("Task not found");
+
     await ctx.db.patch(args.taskId, {
       routedByOverseer: true,
       status: "escalated",
@@ -242,6 +315,15 @@ export const escalateTaskInternal = internalMutation({
       autoResolved: false,
       completedAt: Date.now(),
     });
+
+    await ctx.runMutation(internal.notifications.create, {
+      workspaceId: task.workspaceId,
+      type: "escalation",
+      title: "New escalation",
+      body: args.reason,
+      taskId: args.taskId,
+      linkTo: "/dashboard/escalations",
+    });
   },
 });
 
@@ -251,6 +333,9 @@ export const failTaskInternal = internalMutation({
     reason: v.string(),
   },
   handler: async (ctx, args) => {
+    const task = await ctx.db.get(args.taskId);
+    if (!task) throw new Error("Task not found");
+
     await ctx.db.patch(args.taskId, {
       routedByOverseer: true,
       status: "failed",
@@ -258,12 +343,72 @@ export const failTaskInternal = internalMutation({
       autoResolved: false,
       completedAt: Date.now(),
     });
+
+    await ctx.runMutation(internal.notifications.create, {
+      workspaceId: task.workspaceId,
+      type: "agent_failed",
+      title: "Agent failed",
+      body: args.reason,
+      taskId: args.taskId,
+      linkTo: "/dashboard/activity",
+    });
+  },
+});
+
+export const scheduleRetry = internalMutation({
+  args: {
+    taskId: v.id("tasks"),
+    error: v.string(),
+    failureMode: failureModeValidator,
+  },
+  handler: async (ctx, args) => {
+    const task = await ctx.db.get(args.taskId);
+    if (!task) return;
+
+    const retryCount = (task.retryCount ?? 0) + 1;
+    const shouldFail = args.failureMode === "permanent" || retryCount > MAX_RETRIES;
+
+    if (shouldFail) {
+      await ctx.db.patch(args.taskId, {
+        status: "failed",
+        failureMode: args.failureMode,
+        lastError: args.error,
+        retryCount,
+        autoResolved: false,
+        completedAt: Date.now(),
+      });
+
+      await ctx.runMutation(internal.notifications.create, {
+        workspaceId: task.workspaceId,
+        type: "agent_failed",
+        title: "Agent task failed permanently",
+        body: args.error.slice(0, 140),
+        taskId: args.taskId,
+        linkTo: `/dashboard/tasks/${args.taskId}`,
+      });
+      return;
+    }
+
+    const backoffMs = Math.pow(4, retryCount - 1) * 30_000;
+    const nextRetryAt = Date.now() + backoffMs;
+
+    await ctx.db.patch(args.taskId, {
+      status: "pending",
+      retryCount,
+      nextRetryAt,
+      lastError: args.error,
+      failureMode: "transient",
+      autoResolved: false,
+      completedAt: undefined,
+    });
   },
 });
 
 export const getCrewStats = query({
   args: { workspaceId: v.string(), crewTag: crewTagValidator },
   handler: async (ctx, args) => {
+    await ctx.runQuery(internal.workspaces.assertOwned, { workspaceId: args.workspaceId });
+
     const tasks = await ctx.db
       .query("tasks")
       .withIndex("by_workspace_and_crew_tag", (q) =>
@@ -285,6 +430,8 @@ export const getCrewStats = query({
 export const list = query({
   args: { workspaceId: v.string() },
   handler: async (ctx, args) => {
+    await ctx.runQuery(internal.workspaces.assertOwned, { workspaceId: args.workspaceId });
+
     return await ctx.db
       .query("tasks")
       .withIndex("by_workspace_and_created_at", (q) => q.eq("workspaceId", args.workspaceId))
@@ -293,9 +440,30 @@ export const list = query({
   },
 });
 
+export const listByCrewTag = query({
+  args: {
+    workspaceId: v.string(),
+    crewTag: crewTagValidator,
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    await ctx.runQuery(internal.workspaces.assertOwned, { workspaceId: args.workspaceId });
+
+    return await ctx.db
+      .query("tasks")
+      .withIndex("by_workspace_and_crew_tag", (q) =>
+        q.eq("workspaceId", args.workspaceId).eq("crewTag", args.crewTag),
+      )
+      .order("desc")
+      .take(args.limit ?? 100);
+  },
+});
+
 export const listEscalated = query({
   args: { workspaceId: v.string() },
   handler: async (ctx, args) => {
+    await ctx.runQuery(internal.workspaces.assertOwned, { workspaceId: args.workspaceId });
+
     return await ctx.db
       .query("tasks")
       .withIndex("by_workspace_and_status", (q) =>
@@ -309,6 +477,20 @@ export const listEscalated = query({
 export const resolveEscalation = mutation({
   args: { taskId: v.id("tasks"), resolution: v.string() },
   handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("Unauthenticated");
+
+    const task = await ctx.db.get(args.taskId);
+    if (!task) throw new Error("Task not found");
+
+    const workspace = await ctx.db
+      .query("workspaces")
+      .withIndex("by_owner", (q) => q.eq("ownerUserId", identity.tokenIdentifier))
+      .unique();
+    if (!workspace || workspace._id !== task.workspaceId) {
+      throw new Error("Unauthorized");
+    }
+
     await ctx.db.patch(args.taskId, {
       status: "resolved",
       resolution: args.resolution,
@@ -320,6 +502,8 @@ export const resolveEscalation = mutation({
 export const listRecent = query({
   args: { workspaceId: v.string(), limit: v.number() },
   handler: async (ctx, args) => {
+    await ctx.runQuery(internal.workspaces.assertOwned, { workspaceId: args.workspaceId });
+
     return await ctx.db
       .query("tasks")
       .withIndex("by_workspace_and_created_at", (q) => q.eq("workspaceId", args.workspaceId))
@@ -331,6 +515,8 @@ export const listRecent = query({
 export const getStats = query({
   args: { workspaceId: v.string() },
   handler: async (ctx, args) => {
+    await ctx.runQuery(internal.workspaces.assertOwned, { workspaceId: args.workspaceId });
+
     const [tasks, agents] = await Promise.all([
       ctx.db
         .query("tasks")

@@ -1,10 +1,12 @@
 "use client";
 
 import { usePathname, useRouter } from "next/navigation";
-import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
-import { WORKSPACE_ID, CREW_META } from "@/lib/constants";
+import { CREW_META } from "@/lib/constants";
 import { ROUTES, isActiveNavPath } from "@/lib/routes";
+import { useAuthenticatedQuery } from "@/lib/use-authenticated-query";
+import { useWorkspaceId } from "@/lib/workspace-context";
+import { ROIWidget } from "./ROIWidget";
 
 type CrewKey = "finance" | "support" | "community";
 
@@ -24,7 +26,8 @@ export function CommandPanel({
   selectedCrew,
   onSelectCrew,
 }: CommandPanelProps) {
-  const agents = useQuery(api.agents.list, { workspaceId: WORKSPACE_ID });
+  const workspaceId = useWorkspaceId();
+  const agents = useAuthenticatedQuery(api.agents.list, { workspaceId });
   const pathname = usePathname();
   const router = useRouter();
 
@@ -83,6 +86,10 @@ export function CommandPanel({
             );
           })}
         </div>
+      </div>
+
+      <div className="border-b border-[var(--color-border)] px-3 py-3">
+        <ROIWidget />
       </div>
 
       <div className="flex-1 overflow-y-auto border-b border-[var(--color-border)] px-3 py-4">

@@ -3,12 +3,13 @@
 import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
-import { CREW_META, WORKSPACE_ID } from "@/lib/constants";
+import { CREW_META } from "@/lib/constants";
 import { AgentTagChip } from "@/components/tokens/AgentTagChip";
 import type { CrewKey } from "@/lib/dashboard";
 import { ROUTES, isActiveNavPath } from "@/lib/routes";
+import { useAuthenticatedQuery } from "@/lib/use-authenticated-query";
+import { useWorkspaceId } from "@/lib/workspace-context";
 
 type FilterTab = "all" | "executive" | "finance" | "support" | "community";
 
@@ -69,15 +70,16 @@ export function TraceFeed({
   selectedCrew: CrewKey;
   onSelectCrew: (crew: CrewKey) => void;
 }) {
+  const workspaceId = useWorkspaceId();
   const [filter, setFilter] = useState<FilterTab>(selectedCrew);
   const pathname = usePathname();
 
-  const traces = useQuery(api.traces.listRecent, {
-    workspaceId: WORKSPACE_ID,
+  const traces = useAuthenticatedQuery(api.traces.listRecent, {
+    workspaceId,
     limit: 40,
   });
 
-  const stats = useQuery(api.tasks.getStats, { workspaceId: WORKSPACE_ID });
+  const stats = useAuthenticatedQuery(api.tasks.getStats, { workspaceId });
   const costDisplay = stats ? `$${(stats.costTodayCents / 100).toFixed(2)}` : "—";
   const agentCount = stats?.agentsManaged ?? "—";
   const selectedMeta = CREW_META[selectedCrew];

@@ -1,5 +1,6 @@
 import { query } from "./_generated/server";
 import { v } from "convex/values";
+import { internal } from "./_generated/api";
 
 /** Returns eval cases enriched with the latest run result for each. */
 export const listCasesWithResults = query({
@@ -8,6 +9,13 @@ export const listCasesWithResults = query({
     agentId: v.id("agents"),
   },
   handler: async (ctx, args) => {
+    await ctx.runQuery(internal.workspaces.assertOwned, { workspaceId: args.workspaceId });
+
+    const agent = await ctx.db.get(args.agentId);
+    if (!agent || agent.workspaceId !== args.workspaceId) {
+      throw new Error("Agent not found");
+    }
+
     const cases = await ctx.db
       .query("evalCases")
       .withIndex("by_workspace_and_agent_id", (q) =>
@@ -48,6 +56,13 @@ export const listRecentRuns = query({
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
+    await ctx.runQuery(internal.workspaces.assertOwned, { workspaceId: args.workspaceId });
+
+    const agent = await ctx.db.get(args.agentId);
+    if (!agent || agent.workspaceId !== args.workspaceId) {
+      throw new Error("Agent not found");
+    }
+
     return await ctx.db
       .query("evalRuns")
       .withIndex("by_workspace_and_agent_id", (q) =>

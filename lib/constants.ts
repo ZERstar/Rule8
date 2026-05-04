@@ -1,4 +1,4 @@
-export const WORKSPACE_ID = "rule8-demo";
+export const DEMO_WORKSPACE_ID = "rule8-demo";
 
 export const CREW_META: Record<
   "finance" | "support" | "community",

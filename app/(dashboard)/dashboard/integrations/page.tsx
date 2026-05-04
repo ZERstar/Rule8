@@ -1,15 +1,16 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useMutation, useQuery } from "convex/react";
+import { useAction, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { PageHeader } from "@/components/dashboard/PageHeader";
 import { SecondaryPageShell } from "@/components/dashboard/SecondaryPageShell";
 import { StatStrip } from "@/components/dashboard/StatStrip";
 import { Button } from "@/components/ui/button";
-import { WORKSPACE_ID } from "@/lib/constants";
 import { CheckCircle2, Circle, Plug } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useAuthenticatedQuery } from "@/lib/use-authenticated-query";
+import { useWorkspaceId } from "@/lib/workspace-context";
 
 type ProviderKey = "stripe" | "intercom" | "discord" | "slack" | "resend";
 
@@ -47,6 +48,7 @@ function ProviderCard({
   saving: boolean;
 }) {
   const connected = connection?.status === "connected" && connection.hasToken;
+  const hasError = connection?.status === "error";
   const [showForm, setShowForm] = useState(false);
   const [value, setValue] = useState("");
   const [error, setError] = useState("");
@@ -107,6 +109,8 @@ function ProviderCard({
         <div className="shrink-0">
           {connected ? (
             <CheckCircle2 className="size-5 text-[var(--color-green)]" />
+          ) : hasError ? (
+            <Circle className="size-5 text-[var(--color-red)]" />
           ) : (
             <Circle className="size-5 text-[var(--color-t4)]" />
           )}
@@ -160,7 +164,7 @@ function ProviderCard({
             className="size-1.5 rounded-full"
             style={{ background: connected ? "var(--color-green)" : "var(--color-t4)" }}
           />
-          {connected ? "Connected" : "Not connected"}
+          {connected ? "Connected" : hasError ? "Connection error" : connection?.status === "pending" ? "Testing" : "Not connected"}
         </span>
 
         {connected ? (
@@ -190,8 +194,10 @@ function ProviderCard({
 }
 
 export default function IntegrationsPage() {
-  const connections = useQuery(api.integrations.list, { workspaceId: WORKSPACE_ID });
+  const workspaceId = useWorkspaceId();
+  const connections = useAuthenticatedQuery(api.integrations.list, { workspaceId });
   const upsertConnection = useMutation(api.integrations.upsertConnection);
+  const testConnection = useAction(api.integrations.testConnection);
   const [savingProvider, setSavingProvider] = useState<ProviderKey | null>(null);
 
   const connectionMap = useMemo(
@@ -207,14 +213,18 @@ export default function IntegrationsPage() {
   const saveConnection = async (provider: ProviderKey, token: string) => {
     setSavingProvider(provider);
     try {
-      await upsertConnection({ workspaceId: WORKSPACE_ID, provider, status: "connected", accessTokenRef: token });
+      await upsertConnection({ workspaceId, provider, status: "pending", accessTokenRef: token });
+      const result = await testConnection({ workspaceId, provider });
+      if (!result.ok) {
+        throw new Error(result.error ?? "Connection test failed.");
+      }
     } finally { setSavingProvider(null); }
   };
 
   const disconnect = async (provider: ProviderKey) => {
     setSavingProvider(provider);
     try {
-      await upsertConnection({ workspaceId: WORKSPACE_ID, provider, status: "disconnected", accessTokenRef: undefined });
+      await upsertConnection({ workspaceId, provider, status: "disconnected", accessTokenRef: undefined });
     } finally { setSavingProvider(null); }
   };
 

@@ -1,16 +1,19 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { useAction, useMutation, useQuery } from "convex/react";
+import { useAction, useMutation } from "convex/react";
+import { usePathname } from "next/navigation";
 
 import { api } from "@/convex/_generated/api";
-import { WORKSPACE_ID } from "@/lib/constants";
+import { useAuthenticatedQuery } from "@/lib/use-authenticated-query";
+import { useWorkspaceId } from "@/lib/workspace-context";
 import type { CrewKey, ExecutiveChatMessage } from "@/lib/dashboard";
-import { CommandPanel } from "./CommandPanel";
 import { TraceFeed } from "./TraceFeed";
 import { CrewDetail } from "./CrewDetail";
 
 export function DashboardShell() {
+  const workspaceId = useWorkspaceId();
+  const pathname = usePathname();
   const [selectedCrew, setSelectedCrew] = useState<CrewKey>("finance");
   const [executiveIsTyping, setExecutiveIsTyping] = useState(false);
   const [execInput, setExecInput] = useState("");
@@ -18,7 +21,7 @@ export function DashboardShell() {
 
   const createFromBrief = useMutation(api.agents.createFromBrief);
   const sendChat = useAction(api.chat.send);
-  const chatMessages = useQuery(api.chat.list, { workspaceId: WORKSPACE_ID });
+  const chatMessages = useAuthenticatedQuery(api.chat.list, { workspaceId });
 
   const executiveMessages: ExecutiveChatMessage[] = (chatMessages ?? []).map((m: { role: string; text: string }, i: number) => ({
     id: i,
@@ -35,9 +38,23 @@ export function DashboardShell() {
       /\b(create|build|forge|launch|deploy|make)\b.{0,30}\bagent\b|\bnew agent\b/i.test(text);
     try {
       if (isAgentCreation) {
-        await createFromBrief({ workspaceId: WORKSPACE_ID, brief: text });
+        await createFromBrief({ workspaceId, brief: text });
       }
-      await sendChat({ workspaceId: WORKSPACE_ID, text });
+      await sendChat({
+        workspaceId,
+        text,
+        pageContext: {
+          page: pathname,
+          snapshot: JSON.stringify({
+            selectedCrew,
+            visiblePanel: "dashboard-overview",
+            visibleMessages: executiveMessages.slice(-4).map((message) => ({
+              role: message.role,
+              text: message.text.slice(0, 120),
+            })),
+          }),
+        },
+      });
     } catch (error) {
       console.error("Executive chat failed:", error);
     } finally {
@@ -51,16 +68,6 @@ export function DashboardShell() {
       className="flex h-full w-full flex-col overflow-y-auto xl:flex-row xl:overflow-hidden"
       style={{ background: "var(--color-bg)" }}
     >
-      <aside
-        className="flex w-full shrink-0 flex-col overflow-visible border-b xl:w-[280px] xl:overflow-y-auto xl:border-b-0 xl:border-r"
-        style={{ borderColor: "var(--color-border)", background: "var(--color-bg)" }}
-      >
-        <CommandPanel
-          selectedCrew={selectedCrew}
-          onSelectCrew={setSelectedCrew}
-        />
-      </aside>
-
       <div
         className="flex h-[760px] min-w-0 shrink-0 flex-col overflow-hidden border-b xl:h-auto xl:flex-1 xl:shrink xl:border-b-0 xl:border-r"
         style={{ borderColor: "var(--color-border)" }}

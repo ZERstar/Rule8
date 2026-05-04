@@ -1,4 +1,5 @@
 import type { Id } from "./_generated/dataModel";
+import { internal } from "./_generated/api";
 import { internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 
@@ -11,6 +12,33 @@ const crewTagValidator = v.union(
   v.literal("support"),
   v.literal("community"),
 );
+
+const agentStatusValidator = v.union(
+  v.literal("active"),
+  v.literal("idle"),
+  v.literal("running"),
+  v.literal("critical"),
+  v.literal("paused"),
+  v.literal("done"),
+  v.literal("orchestrating"),
+);
+
+type OnboardingCrewConfig = {
+  key: string;
+  label: string;
+  icon?: string;
+  color?: string;
+  systemPrompt?: string;
+  toolKeys?: string[];
+};
+
+function crewKeyToTag(key: string): "finance" | "support" | "community" | null {
+  const normalized = key.toLowerCase();
+  if (/(billing|finance|refund|returns|payment|invoice)/.test(normalized)) return "finance";
+  if (/(community|moderation|discord|slack|member|reviews)/.test(normalized)) return "community";
+  if (/(support|client|onboarding|comms|customer)/.test(normalized)) return "support";
+  return null;
+}
 
 type AgentBlueprint = {
   crewTag: "finance" | "support" | "community";
@@ -105,6 +133,8 @@ export const getOverseer = internalQuery({
 export const listByCrew = query({
   args: { workspaceId: v.string(), crewTag: crewTagValidator },
   handler: async (ctx, args) => {
+    await ctx.runQuery(internal.workspaces.assertOwned, { workspaceId: args.workspaceId });
+
     return await ctx.db
       .query("agents")
       .withIndex("by_workspace_and_crew_tag", (q) =>
@@ -117,10 +147,25 @@ export const listByCrew = query({
 export const list = query({
   args: { workspaceId: v.string() },
   handler: async (ctx, args) => {
+    await ctx.runQuery(internal.workspaces.assertOwned, { workspaceId: args.workspaceId });
+
     return await ctx.db
       .query("agents")
       .withIndex("by_workspace_and_chamber_id", (q) => q.eq("workspaceId", args.workspaceId))
       .collect();
+  },
+});
+
+export const setStatus = internalMutation({
+  args: {
+    agentId: v.id("agents"),
+    status: agentStatusValidator,
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.agentId, {
+      status: args.status,
+      updatedAt: Date.now(),
+    });
   },
 });
 
@@ -130,6 +175,8 @@ export const get = query({
     chamberId: v.string(),
   },
   handler: async (ctx, args) => {
+    await ctx.runQuery(internal.workspaces.assertOwned, { workspaceId: args.workspaceId });
+
     return await ctx.db
       .query("agents")
       .withIndex("by_workspace_and_chamber_id", (q) =>
@@ -145,6 +192,8 @@ export const createFromBrief = mutation({
     brief: v.string(),
   },
   handler: async (ctx, args) => {
+    await ctx.runQuery(internal.workspaces.assertOwned, { workspaceId: args.workspaceId });
+
     const blueprint = getCrewBlueprint(args.brief);
     const existingAgents = await ctx.db
       .query("agents")
@@ -204,6 +253,7 @@ export const updatePrompt = mutation({
   handler: async (ctx, args) => {
     const agent = await ctx.db.get(args.agentId);
     if (!agent) throw new Error("Agent not found");
+    await ctx.runQuery(internal.workspaces.assertOwned, { workspaceId: agent.workspaceId });
 
     const newVersion = agent.promptVersion + 1;
     await ctx.db.patch(args.agentId, {
@@ -233,6 +283,13 @@ export const listPromptVersions = query({
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
+    await ctx.runQuery(internal.workspaces.assertOwned, { workspaceId: args.workspaceId });
+
+    const agent = await ctx.db.get(args.agentId);
+    if (!agent || agent.workspaceId !== args.workspaceId) {
+      throw new Error("Agent not found");
+    }
+
     return await ctx.db
       .query("promptVersions")
       .withIndex("by_workspace_and_agent_id", (q) =>
@@ -382,9 +439,73 @@ export const initializeCrewLeads = internalMutation({
   },
 });
 
+export const applyOnboardingCrewConfig = internalMutation({
+  args: {
+    workspaceId: v.string(),
+    crewConfig: v.string(),
+  },
+  handler: async (ctx, args) => {
+    let crews: OnboardingCrewConfig[] = [];
+    try {
+      const parsed = JSON.parse(args.crewConfig) as unknown;
+      if (Array.isArray(parsed)) {
+        crews = parsed.filter(
+          (item): item is OnboardingCrewConfig =>
+            Boolean(item) &&
+            typeof item === "object" &&
+            "key" in item &&
+            "label" in item &&
+            typeof (item as { key?: unknown }).key === "string" &&
+            typeof (item as { label?: unknown }).label === "string",
+        );
+      }
+    } catch {
+      crews = [];
+    }
+
+    await ctx.runMutation(internal.agents.initializeCrewLeads, {
+      workspaceId: args.workspaceId,
+    });
+
+    const mapped = new Map<"finance" | "support" | "community", OnboardingCrewConfig>();
+    for (const crew of crews) {
+      const tag = crewKeyToTag(crew.key);
+      if (tag && !mapped.has(tag)) mapped.set(tag, crew);
+    }
+
+    for (const [crewTag, crew] of mapped) {
+      const agents = await ctx.db
+        .query("agents")
+        .withIndex("by_workspace_and_crew_tag", (q) =>
+          q.eq("workspaceId", args.workspaceId).eq("crewTag", crewTag),
+        )
+        .take(10);
+      const lead = agents.find((agent) => agent.isCrewLead) ?? agents[0];
+      if (!lead) continue;
+
+      await ctx.db.patch(lead._id, {
+        name: `${crew.label} Lead`,
+        crewName: crew.label,
+        crewIcon: crew.icon ?? lead.crewIcon,
+        crewColor: crew.color ?? lead.crewColor,
+        description: crew.systemPrompt || lead.description,
+        integrationNames: crew.toolKeys ?? lead.integrationNames,
+        systemPrompt: crew.systemPrompt
+          ? `You are the ${crew.label} Lead. ${crew.systemPrompt}`
+          : lead.systemPrompt,
+        promptVersion: lead.promptVersion + 1,
+        lastAction: "Configured from onboarding wizard",
+        updatedAt: Date.now(),
+      });
+    }
+  },
+});
+
 export const purgeTasksAndTraces = mutation({
   args: { workspaceId: v.string() },
   handler: async (ctx, args) => {
+    await ctx.runQuery(internal.workspaces.assertOwned, { workspaceId: args.workspaceId });
+
     const traces = await ctx.db
       .query("traces")
       .withIndex("by_workspace_and_created_at", (q) => q.eq("workspaceId", args.workspaceId))

@@ -2,8 +2,13 @@ import { v } from "convex/values";
 
 import { internal } from "../_generated/api";
 import { internalAction } from "../_generated/server";
-import { runAgentModel, type RunAgentModelResult } from "../../lib/anthropic";
 import { buildWorkerSystemPrompt } from "../../lib/agents/prompts";
+import { runAgenticToolLoop, type AgenticLoopResult } from "../../lib/agents/tool-loop";
+import {
+  executeToolCall,
+  isToolResultError,
+  type IntegrationConfigMap,
+} from "../../lib/agents/tool-executor";
 import { SUPPORT_TOOLS } from "../../lib/agents/tools";
 
 function getReplyFallback(summary: string, crewName: string) {
@@ -14,6 +19,10 @@ function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
 }
 
+function isTransientError(message: string) {
+  return /(timeout|timed out|etimedout|rate limit|429|500|502|503|504|temporary|econnreset|econnrefused|fetch failed|network)/i.test(message);
+}
+
 export const handleTask = internalAction({
   args: {
     taskId: v.id("tasks"),
@@ -21,7 +30,7 @@ export const handleTask = internalAction({
     workspaceId: v.string(),
   },
   handler: async (ctx, args) => {
-    const task = await ctx.runQuery(internal.tasks.getById, { taskId: args.taskId });
+    const task = await ctx.runQuery(internal.tasks.getByIdInternal, { taskId: args.taskId });
     if (!task || !task.assignedAgentId) {
       throw new Error("Assigned task was not found or has no assigned agent.");
     }
@@ -34,6 +43,21 @@ export const handleTask = internalAction({
     if (!assignedAgent) {
       throw new Error("Assigned agent not found for task.");
     }
+
+    await ctx.runMutation(internal.agents.setStatus, {
+      agentId: assignedAgent._id,
+      status: "running",
+    });
+
+    try {
+    const contextRows = await ctx.runQuery(internal.productContext.listAllInternal, {
+      workspaceId: args.workspaceId,
+    });
+    const integrationConfigs: IntegrationConfigMap = await ctx.runQuery(
+      internal.integrations.listConfigs,
+      { workspaceId: args.workspaceId },
+    );
+    const contextMap = Object.fromEntries(contextRows.map((row) => [row.key, row.value]));
 
     // US-17: Load episodic context from prior interactions with this user
     let episodicContext = "";
@@ -80,18 +104,36 @@ export const handleTask = internalAction({
       }
     }
 
-    let modelResult: RunAgentModelResult;
+    let modelResult: AgenticLoopResult;
     try {
-      modelResult = await runAgentModel({
+      modelResult = await runAgenticToolLoop({
+        ctx,
+        runId: args.runId,
+        taskId: task._id,
+        agentId: assignedAgent._id,
+        agentTag: task.crewTag === "finance" ? "finance" : "support",
+        crewTag: task.crewTag,
+        crewName: assignedAgent.crewName,
+        modelId: assignedAgent.modelId,
+        agentName: assignedAgent.name,
+        workspaceId: args.workspaceId,
         systemPrompt: buildWorkerSystemPrompt({
           agentName: assignedAgent.name,
           crewName: assignedAgent.crewName,
           description: assignedAgent.description,
+          productDescription: contextMap.product_description,
+          refundPolicy: contextMap.refund_policy,
+          escalationRules: contextMap.escalation_rules,
+          agentTone: contextMap.agent_tone,
+          connectedProviders: assignedAgent.integrationNames,
         }),
-        userPrompt: `Task summary:\n${task.summary}\n\nRaw payload:\n${task.rawPayload}${episodicContext}`,
+        userPrompt: `Task summary:\n${task.summary}\n\nIntercom conversation ID: ${task.externalId ?? "unknown"}\n\nRaw payload:\n${task.rawPayload}${episodicContext}`,
         maxTokens: 320,
         tools: SUPPORT_TOOLS,
         mockText: getReplyFallback(task.summary, assignedAgent.crewName),
+        toolDefaults: {
+          intercom_reply: { conversationId: task.externalId },
+        },
       });
     } catch (error: unknown) {
       const reason = `AI model failed while drafting support response: ${errorMessage(error)}`;
@@ -119,15 +161,50 @@ export const handleTask = internalAction({
         workspaceId: args.workspaceId,
       });
 
-      await ctx.runMutation(internal.tasks.failTaskInternal, {
-        taskId: task._id,
-        reason,
-      });
-
       throw new Error(reason);
     }
 
-    const resolutionPreview = modelResult.text.slice(0, 160);
+    let outboundResult = modelResult.toolExecutions.find(
+      (tool) => tool.name === "intercom_reply" && tool.status === "ok",
+    )?.result;
+
+    if (task.source === "intercom" && !outboundResult) {
+      outboundResult = await executeToolCall(
+        "intercom_reply",
+        { conversationId: task.externalId, message: modelResult.text },
+        integrationConfigs,
+      );
+
+      const outboundStatus = isToolResultError(outboundResult) ? "error" : "ok";
+      await ctx.runMutation(internal.traces.recordInternal, {
+        runId: args.runId,
+        taskId: task._id,
+        agentId: assignedAgent._id,
+        agentTag: task.crewTag === "finance" ? "finance" : "support",
+        crewTag: task.crewTag,
+        crewName: assignedAgent.crewName,
+        action: `Delivered Intercom response for task ${task.externalId ?? task._id}.`,
+        stepType: "tool_call",
+        model: modelResult.model,
+        status: outboundStatus,
+        toolName: "intercom_reply",
+        toolOutputPreview: outboundResult.slice(0, 200),
+        tokensIn: 0,
+        tokensOut: 0,
+        costCents: 0,
+        latencyMs: Math.max(1, Math.round(modelResult.latencyMs / 4)),
+        cacheHit: false,
+        cacheTokens: 0,
+        confidence: outboundStatus === "ok" ? 0.92 : 0.2,
+        workspaceId: args.workspaceId,
+      });
+
+      if (outboundStatus === "error") {
+        throw new Error(outboundResult);
+      }
+    }
+
+    const resolutionPreview = (outboundResult ?? modelResult.text).slice(0, 160);
 
     await ctx.runMutation(internal.traces.recordInternal, {
       runId: args.runId,
@@ -136,34 +213,13 @@ export const handleTask = internalAction({
       agentTag: task.crewTag === "finance" ? "finance" : "support",
       crewTag: task.crewTag,
       crewName: assignedAgent.crewName,
-      action: `${assignedAgent.name} generated a customer-facing resolution draft.`,
-      stepType: "llm_call",
-      model: modelResult.model,
-      status: "ok",
-      toolName: undefined,
-      toolOutputPreview: undefined,
-      tokensIn: modelResult.tokensIn,
-      tokensOut: modelResult.tokensOut,
-      costCents: modelResult.costCents,
-      latencyMs: modelResult.latencyMs,
-      cacheHit: modelResult.cacheHit,
-      cacheTokens: modelResult.cacheTokens,
-      confidence: 0.88,
-      workspaceId: args.workspaceId,
-    });
-
-    await ctx.runMutation(internal.traces.recordInternal, {
-      runId: args.runId,
-      taskId: task._id,
-      agentId: assignedAgent._id,
-      agentTag: task.crewTag === "finance" ? "finance" : "support",
-      crewTag: task.crewTag,
-      crewName: assignedAgent.crewName,
-      action: `Sent automated Intercom resolution for task ${task.externalId ?? task._id}.`,
+      action: outboundResult
+        ? `Confirmed Intercom delivery for task ${task.externalId ?? task._id}.`
+        : `${assignedAgent.name} prepared a support resolution for task ${task._id}.`,
       stepType: "resolution",
       model: modelResult.model,
       status: "ok",
-      toolName: "intercom_reply",
+      toolName: outboundResult ? "intercom_reply" : undefined,
       toolOutputPreview: resolutionPreview,
       tokensIn: 0,
       tokensOut: 0,
@@ -187,5 +243,42 @@ export const handleTask = internalAction({
       status: "resolved" as const,
       resolution: modelResult.text,
     };
+    } catch (error: unknown) {
+      const message = errorMessage(error);
+      const transient = isTransientError(message);
+
+      await ctx.runMutation(internal.tasks.scheduleRetry, {
+        taskId: args.taskId,
+        error: message,
+        failureMode: transient ? "transient" : "permanent",
+      });
+
+      if (transient) {
+        const updatedTask = await ctx.runQuery(internal.tasks.getByIdInternal, {
+          taskId: args.taskId,
+        });
+        if (updatedTask?.status === "pending" && updatedTask.nextRetryAt) {
+          await ctx.scheduler.runAfter(
+            Math.max(0, updatedTask.nextRetryAt - Date.now()),
+            internal.agent_runner.support.handleTask,
+            {
+              taskId: args.taskId,
+              runId: `${args.runId}-retry-${updatedTask.retryCount ?? 0}`,
+              workspaceId: args.workspaceId,
+            },
+          );
+        }
+      }
+
+      return {
+        status: transient ? "retry_scheduled" as const : "failed" as const,
+        reason: message,
+      };
+    } finally {
+      await ctx.runMutation(internal.agents.setStatus, {
+        agentId: assignedAgent._id,
+        status: "idle",
+      });
+    }
   },
 });

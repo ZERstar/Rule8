@@ -15,15 +15,21 @@ import type * as agent_runner_support from "../agent_runner/support.js";
 import type * as agents from "../agents.js";
 import type * as auth from "../auth.js";
 import type * as chat from "../chat.js";
+import type * as crons from "../crons.js";
+import type * as digest from "../digest.js";
 import type * as evals from "../evals.js";
 import type * as http from "../http.js";
 import type * as integrations from "../integrations.js";
+import type * as notifications from "../notifications.js";
 import type * as productContext from "../productContext.js";
+import type * as signals from "../signals.js";
 import type * as tasks from "../tasks.js";
 import type * as traces from "../traces.js";
+import type * as userPreferences from "../userPreferences.js";
 import type * as waitlist from "../waitlist.js";
 import type * as webhooks_discord from "../webhooks/discord.js";
 import type * as webhooks_intercom from "../webhooks/intercom.js";
+import type * as workspaces from "../workspaces.js";
 
 import type {
   ApiFromModules,
@@ -39,15 +45,21 @@ declare const fullApi: ApiFromModules<{
   agents: typeof agents;
   auth: typeof auth;
   chat: typeof chat;
+  crons: typeof crons;
+  digest: typeof digest;
   evals: typeof evals;
   http: typeof http;
   integrations: typeof integrations;
+  notifications: typeof notifications;
   productContext: typeof productContext;
+  signals: typeof signals;
   tasks: typeof tasks;
   traces: typeof traces;
+  userPreferences: typeof userPreferences;
   waitlist: typeof waitlist;
   "webhooks/discord": typeof webhooks_discord;
   "webhooks/intercom": typeof webhooks_intercom;
+  workspaces: typeof workspaces;
 }>;
 
 /**

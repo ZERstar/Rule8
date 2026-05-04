@@ -4,8 +4,9 @@ import { v } from 'convex/values'
 // Join the waitlist — silently skips if email already exists
 export const joinWaitlist = mutation({
   args: {
-    email: v.string(),
-    source: v.optional(v.string()),
+    email:    v.string(),
+    name:     v.optional(v.string()),
+    source:   v.optional(v.string()),
     referrer: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
@@ -20,8 +21,9 @@ export const joinWaitlist = mutation({
     }
 
     await ctx.db.insert('waitlist', {
-      email: args.email,
-      source: args.source ?? 'hero',
+      email:    args.email,
+      name:     args.name,
+      source:   args.source ?? 'hero',
       referrer: args.referrer,
       joinedAt: Date.now(),
     })

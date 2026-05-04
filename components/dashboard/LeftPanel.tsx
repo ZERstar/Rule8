@@ -1,9 +1,10 @@
 "use client";
 
-import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
-import { WORKSPACE_ID, CREW_META } from "@/lib/constants";
+import { CREW_META } from "@/lib/constants";
 import type { CrewKey } from "@/lib/dashboard";
+import { useAuthenticatedQuery } from "@/lib/use-authenticated-query";
+import { useWorkspaceId } from "@/lib/workspace-context";
 
 const CREW_KEYS: CrewKey[] = ["finance", "support", "community"];
 
@@ -14,8 +15,9 @@ interface LeftPanelProps {
 }
 
 export function LeftPanel({ selectedCrew, onSelectCrew, onExecOpen }: LeftPanelProps) {
-  const stats = useQuery(api.tasks.getStats, { workspaceId: WORKSPACE_ID });
-  const agents = useQuery(api.agents.list, { workspaceId: WORKSPACE_ID });
+  const workspaceId = useWorkspaceId();
+  const stats = useAuthenticatedQuery(api.tasks.getStats, { workspaceId });
+  const agents = useAuthenticatedQuery(api.agents.list, { workspaceId });
 
   const agentsManaged = stats?.agentsManaged ?? "—";
   const tasksToday    = stats?.tasksToday ?? "—";

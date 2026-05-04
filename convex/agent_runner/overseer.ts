@@ -99,7 +99,7 @@ async function routeTaskHandler(
   ctx: ActionCtx,
   args: RouteTaskArgs,
 ): Promise<RouteResult> {
-    const task = await ctx.runQuery(internal.tasks.getById, { taskId: args.taskId });
+    const task = await ctx.runQuery(internal.tasks.getByIdInternal, { taskId: args.taskId });
     const overseer = await ctx.runQuery(internal.agents.getOverseer, {
       workspaceId: args.workspaceId,
     });
@@ -110,8 +110,16 @@ async function routeTaskHandler(
 
     const fallbackRoute = heuristicRoute(task.summary);
     const runId = `run-${task.externalId ?? task._id}-${Date.now()}`;
+    const contextRows = await ctx.runQuery(internal.productContext.listAllInternal, {
+      workspaceId: args.workspaceId,
+    });
+    const contextMap = Object.fromEntries(contextRows.map((row) => [row.key, row.value]));
     const routeModel = await runAgentModel({
-      systemPrompt: buildOverseerSystemPrompt({ workspaceId: args.workspaceId }),
+      systemPrompt: buildOverseerSystemPrompt({
+        workspaceId: args.workspaceId,
+        productDescription: contextMap.product_description,
+        escalationRules: contextMap.escalation_rules,
+      }),
       userPrompt: `Classify this inbound task:\n${task.summary}\n\nPayload:\n${task.rawPayload}`,
       maxTokens: 240,
       mockText: JSON.stringify(fallbackRoute),
@@ -158,7 +166,7 @@ async function routeTaskHandler(
       agentTag: "executive",
       crewTag: "executive",
       crewName: "Executive",
-      action: `Classified task for ${decision.crewTag === "escalate" ? "Executive review" : `${decision.crewTag} crew`} — ${decision.reason}`,
+      action: `Classified task for ${decision.crewTag === "escalate" ? "Executive review" : `${decision.crewTag} crew`} with product context "${(contextMap.product_description ?? "none").slice(0, 120)}" - ${decision.reason}`,
       stepType: "overseer_route",
       model: routeModel.model,
       status: decision.confidence >= 0.7 ? "ok" : "warn",

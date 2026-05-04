@@ -1,8 +1,8 @@
 "use client";
 
-import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
-import { WORKSPACE_ID } from "@/lib/constants";
+import { useAuthenticatedQuery } from "@/lib/use-authenticated-query";
+import { useWorkspaceId } from "@/lib/workspace-context";
 
 function StatCell({
   label,
@@ -24,7 +24,8 @@ function StatCell({
 }
 
 export function StatsStrip() {
-  const stats = useQuery(api.tasks.getStats, { workspaceId: WORKSPACE_ID });
+  const workspaceId = useWorkspaceId();
+  const stats = useAuthenticatedQuery(api.tasks.getStats, { workspaceId });
 
   const agentsManaged = stats?.agentsManaged ?? "—";
   const tasksToday = stats?.tasksToday ?? "—";

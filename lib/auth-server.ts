@@ -1,5 +1,7 @@
 import { convexBetterAuthNextJs } from "@convex-dev/better-auth/nextjs";
 
+import { api } from "@/convex/_generated/api";
+
 const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL;
 const convexSiteUrl = process.env.NEXT_PUBLIC_CONVEX_SITE_URL;
 const AUTH_PROXY_TIMEOUT_MS = 15_000;
@@ -116,5 +118,35 @@ export async function isAuthenticated() {
       console.error("Failed to check Convex Auth session", error);
     }
     return false;
+  }
+}
+
+export async function getCurrentAuthUser() {
+  if (!authServer) {
+    return null;
+  }
+
+  try {
+    return await authServer.fetchAuthQuery(api.auth.getCurrentUser);
+  } catch (error) {
+    if (!isDynamicServerUsageError(error)) {
+      console.error("Failed to fetch current auth user from Convex Auth", error);
+    }
+    return null;
+  }
+}
+
+export async function getOrCreateWorkspace(name: string) {
+  if (!authServer) {
+    return null;
+  }
+
+  try {
+    return await authServer.fetchAuthMutation(api.workspaces.getOrCreate, { name });
+  } catch (error) {
+    if (!isDynamicServerUsageError(error)) {
+      console.error("Failed to get or create workspace", error);
+    }
+    return null;
   }
 }

@@ -1,6 +1,7 @@
 "use client";
 
-import { useMutation, useQuery } from "convex/react";
+import { useMutation } from "convex/react";
+import Link from "next/link";
 
 import { api } from "@/convex/_generated/api";
 import type { Doc, Id } from "@/convex/_generated/dataModel";
@@ -9,7 +10,10 @@ import { SecondaryPageShell } from "@/components/dashboard/SecondaryPageShell";
 import { StatStrip } from "@/components/dashboard/StatStrip";
 import { Button } from "@/components/ui/button";
 import { StatusTag } from "@/components/tokens/StatusTag";
-import { CREW_META, WORKSPACE_ID } from "@/lib/constants";
+import { CREW_META } from "@/lib/constants";
+import { ROUTES } from "@/lib/routes";
+import { useAuthenticatedQuery } from "@/lib/use-authenticated-query";
+import { useWorkspaceId } from "@/lib/workspace-context";
 import { Check, X } from "lucide-react";
 
 const SOURCE_LABEL: Record<string, string> = {
@@ -36,7 +40,8 @@ function timeAgo(ts: number) {
 }
 
 export default function EscalationsPage() {
-  const tasksQuery = useQuery(api.tasks.listEscalated, { workspaceId: WORKSPACE_ID });
+  const workspaceId = useWorkspaceId();
+  const tasksQuery = useAuthenticatedQuery(api.tasks.listEscalated, { workspaceId });
   const resolve = useMutation(api.tasks.resolveEscalation);
   const tasks: Doc<"tasks">[] | undefined = tasksQuery;
   const totalCost = (tasks ?? []).reduce((sum, t) => sum + (t.totalCostCents ?? 0), 0);
@@ -105,7 +110,10 @@ export default function EscalationsPage() {
                     />
 
                     <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                      <div className="min-w-0 flex-1">
+                      <Link
+                        href={ROUTES.dashboardTask(task._id)}
+                        className="min-w-0 flex-1 rounded-xl transition-colors hover:bg-[var(--color-surface-2)]"
+                      >
                         <div className="mb-2 flex flex-wrap items-center gap-2">
                           <StatusTag status="escalated" />
                           {crew && (
@@ -156,7 +164,7 @@ export default function EscalationsPage() {
                             </>
                           )}
                         </div>
-                      </div>
+                      </Link>
 
                       <div className="flex shrink-0 flex-col gap-2 lg:w-[140px]">
                         <Button

@@ -1,4 +1,5 @@
-// Simple scrollable shell for secondary pages (escalations, integrations, prompts)
+import { ExecutivePanel } from "@/components/dashboard/ExecutivePanel";
+
 export function SecondaryPageShell({
   children,
   contentClassName = "",
@@ -7,10 +8,16 @@ export function SecondaryPageShell({
   contentClassName?: string;
 }) {
   return (
-    <div className="thin-scroll h-full overflow-y-auto">
-      <div className={`mx-auto w-full max-w-7xl px-6 py-6 ${contentClassName}`}>
-        {children}
+    <div className="flex h-full w-full min-w-0 overflow-hidden">
+      {/* Main content */}
+      <div className="thin-scroll min-w-0 flex-1 overflow-y-auto">
+        <div className={`mx-auto w-full max-w-5xl px-8 py-8 ${contentClassName}`}>
+          {children}
+        </div>
       </div>
+
+      {/* Executive panel */}
+      <ExecutivePanel />
     </div>
   );
 }
