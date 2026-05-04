@@ -1,120 +1,134 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, useEffect, useRef } from "react";
 import Link from "next/link";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 
-/* ── Design tokens ─────────────────────────────────────────── */
-const C = {
-  cream:   "#F5F0E8",
-  card:    "#EDE8DF",
-  primary: "#1C1C1C",
-  muted:   "#6B6256",
-  accent:  "#C8522A",
-  border:  "#D9D3C8",
-  dark:    "#111110",
+/* ─── tokens ───────────────────────────────────────────────── */
+const T = {
+  bg:      "#0B0A09",
+  surface: "#141210",
+  raised:  "#1C1917",
+  border:  "rgba(255,255,255,0.07)",
+  borderHover: "rgba(255,255,255,0.14)",
+  text:    "#F2EDE6",
+  muted:   "#7A746C",
+  faint:   "#3D3830",
+  orange:  "#F97316",
+  orangeDim: "rgba(249,115,22,0.12)",
+  green:   "#22C55E",
+  greenDim: "rgba(34,197,94,0.12)",
+  red:     "#EF4444",
 } as const;
 
-const serif  = "var(--font-playfair), 'Georgia', serif";
-const sans   = "var(--font-inter), system-ui, sans-serif";
-const mono   = "'SFMono-Regular', Consolas, monospace";
+const sans = "var(--font-inter), system-ui, -apple-system, sans-serif";
+const mono = "'SFMono-Regular', 'Fira Code', Consolas, monospace";
 
-/* ── Shared primitives ─────────────────────────────────────── */
-function SectionLabel({ index, text }: { index: string; text: string }) {
+/* ─── primitives ───────────────────────────────────────────── */
+function Chip({ children }: { children: React.ReactNode }) {
   return (
-    <div className="mb-6 inline-flex items-center gap-2 rounded-full border px-4 py-2"
-      style={{ borderColor: C.border, background: "white" }}>
-      <span style={{ fontFamily: mono, fontSize: 11, letterSpacing: "0.12em", color: C.muted, textTransform: "uppercase" }}>
-        {index} — {text}
-      </span>
-    </div>
-  );
-}
-
-function Heading({ children, size = 56 }: { children: React.ReactNode; size?: number }) {
-  return (
-    <h2 style={{ fontFamily: serif, fontSize: size, fontWeight: 700, lineHeight: 1.08, letterSpacing: "-0.025em", color: C.primary }}>
+    <span className="inline-flex items-center gap-1.5 rounded-full border px-3 py-1"
+      style={{ fontFamily: mono, fontSize: 10, letterSpacing: "0.12em", textTransform: "uppercase",
+        color: T.orange, borderColor: "rgba(249,115,22,0.25)", background: T.orangeDim }}>
       {children}
-    </h2>
+    </span>
   );
 }
 
-function AccentItalic({ children }: { children: React.ReactNode }) {
-  return <em style={{ fontStyle: "italic", color: C.accent }}>{children}</em>;
-}
-
-function Body({ children, className = "" }: { children: React.ReactNode; className?: string }) {
+function Label({ children }: { children: React.ReactNode }) {
   return (
-    <p className={className}
-      style={{ fontFamily: sans, fontSize: 18, lineHeight: 1.75, color: C.muted, maxWidth: 650 }}>
+    <p style={{ fontFamily: mono, fontSize: 10, letterSpacing: "0.18em", textTransform: "uppercase",
+      color: T.muted, marginBottom: 16 }}>
       {children}
     </p>
   );
 }
 
-function CTAPrimary({ children, href = "/waitlist" }: { children: React.ReactNode; href?: string }) {
+function H2({ children, size = 48 }: { children: React.ReactNode; size?: number }) {
   return (
-    <Link href={href}
-      className="inline-flex items-center gap-2 rounded-full px-7 py-3.5 font-semibold text-white transition-opacity hover:opacity-88"
-      style={{ background: C.accent, fontFamily: sans, fontSize: 15 }}>
+    <h2 style={{ fontFamily: sans, fontWeight: 800, fontSize: size, lineHeight: 1.05,
+      letterSpacing: "-0.035em", color: T.text }}>
       {children}
-    </Link>
+    </h2>
   );
 }
 
-function CTASecondary({ children, href = "#how-it-works" }: { children: React.ReactNode; href?: string }) {
-  return (
-    <a href={href}
-      className="inline-flex items-center gap-2 rounded-full border px-7 py-3.5 font-medium transition-colors hover:opacity-70"
-      style={{ borderColor: C.border, color: C.primary, fontFamily: sans, fontSize: 15 }}>
-      {children}
-    </a>
-  );
+function Accent({ children }: { children: React.ReactNode }) {
+  return <span style={{ color: T.orange }}>{children}</span>;
 }
 
-/* ── 1. NAVBAR ─────────────────────────────────────────────── */
-function Navbar() {
+function Divider() {
+  return <div style={{ height: 1, background: T.border }} />;
+}
+
+/* ─── 1. NAV ───────────────────────────────────────────────── */
+function Nav() {
   return (
-    <header className="fixed inset-x-0 top-0 z-50 backdrop-blur-md"
-      style={{ background: "rgba(245,240,232,0.95)", borderBottom: `1px solid ${C.border}` }}>
-      <div className="mx-auto flex h-16 max-w-[1100px] items-center justify-between px-6">
-        {/* Logo */}
+    <header className="fixed inset-x-0 top-0 z-50"
+      style={{ background: "rgba(11,10,9,0.88)", backdropFilter: "blur(12px)",
+        borderBottom: `1px solid ${T.border}` }}>
+      <div className="mx-auto flex h-14 max-w-[1120px] items-center justify-between px-6">
         <Link href="/" className="flex items-center gap-2.5">
-          <span className="flex h-7 w-7 items-center justify-center rounded-full text-[13px] font-bold text-white"
-            style={{ background: C.accent }}>8</span>
-          <span style={{ fontFamily: serif, fontWeight: 700, fontSize: 20, color: C.primary }}>Rule8</span>
+          <div className="flex h-7 w-7 items-center justify-center rounded text-[13px] font-black text-white"
+            style={{ background: T.orange }}>8</div>
+          <span style={{ fontFamily: sans, fontWeight: 700, fontSize: 16, color: T.text }}>Rule8</span>
         </Link>
 
-        {/* Nav links */}
-        <nav className="hidden items-center gap-7 md:flex">
-          {[["#how-it-works","How it works"],["#crews","Crews"],["#integrations","Integrations"],["#pricing","Pricing"]].map(([href,label])=>(
-            <a key={href} href={href}
-              className="transition-opacity hover:opacity-60"
-              style={{ fontFamily: sans, fontSize: 14, color: C.muted }}>
-              {label}
-            </a>
+        <nav className="hidden items-center gap-6 md:flex">
+          {[["#how","How it works"],["#crews","Crews"],["#integrations","Integrations"]].map(([href,l])=>(
+            <a key={href} href={href} className="transition-opacity hover:opacity-50"
+              style={{ fontFamily: sans, fontSize: 13, color: T.muted }}>{l}</a>
           ))}
         </nav>
 
-        {/* CTA */}
-        <Link href="/waitlist"
-          className="hidden rounded-full px-5 py-2.5 text-[14px] font-semibold text-white transition-opacity hover:opacity-80 md:inline-flex items-center gap-1.5"
-          style={{ background: C.dark, fontFamily: sans }}>
-          Get early access <span>→</span>
-        </Link>
+        <div className="flex items-center gap-3">
+          <Link href="/sign-in"
+            className="hidden text-[13px] transition-opacity hover:opacity-50 md:block"
+            style={{ fontFamily: sans, color: T.muted }}>Sign in</Link>
+          <Link href="/waitlist"
+            className="flex items-center gap-1.5 rounded-full px-4 py-2 text-[13px] font-semibold text-black transition-opacity hover:opacity-85"
+            style={{ background: T.orange, fontFamily: sans }}>
+            Get access →
+          </Link>
+        </div>
       </div>
     </header>
   );
 }
 
-/* ── 2. HERO ───────────────────────────────────────────────── */
+/* ─── 2. HERO ──────────────────────────────────────────────── */
+function TickerLine({ text }: { text: string }) {
+  const ref = useRef<HTMLDivElement>(null);
+  return (
+    <div ref={ref} className="overflow-hidden whitespace-nowrap" style={{ maskImage: "linear-gradient(to right, transparent, black 5%, black 95%, transparent)" }}>
+      <div className="inline-flex animate-[ticker_22s_linear_infinite]" style={{ fontFamily: mono }}>
+        {Array(3).fill(null).map((_, i) => (
+          <span key={i} className="pr-16" style={{ fontSize: 11, color: T.faint, letterSpacing: "0.1em" }}>{text}</span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+const TRACE_LINES = [
+  { t: "00:00.021", tag: "EXECUTIVE", col: T.orange,  msg: "classified: billing_dispute · confidence 0.96" },
+  { t: "00:00.048", tag: "ROUTE    ", col: "#60A5FA",  msg: "→ payment_specialist · reason: duplicate charge" },
+  { t: "00:00.071", tag: "TOOL     ", col: "#A78BFA",  msg: "stripe.lookup(email='sarah@acme.io')" },
+  { t: "00:00.298", tag: "RESULT   ", col: T.green,    msg: "charge_9xK2 $49 — duplicate confirmed ✓" },
+  { t: "00:00.312", tag: "TOOL     ", col: "#A78BFA",  msg: "stripe.refund(charge_9xK2, $49.00)" },
+  { t: "00:00.687", tag: "RESULT   ", col: T.green,    msg: "refund_rf_aB8x · succeeded ✓" },
+  { t: "00:00.694", tag: "TOOL     ", col: "#A78BFA",  msg: "intercom.reply(conv_4921, 'Hi Sarah…')" },
+  { t: "00:00.891", tag: "RESULT   ", col: T.green,    msg: "message delivered ✓" },
+  { t: "00:00.899", tag: "RESOLVED ", col: T.orange,   msg: "891ms · $0.18 · cache hit · escalation: none" },
+];
+
 function Hero() {
   const count = useQuery(api.waitlist.getCount) ?? 0;
   const joinWaitlist = useMutation(api.waitlist.joinWaitlist);
   const [email, setEmail] = useState("");
-  const [status, setStatus] = useState<"idle"|"success"|"dup"|"err">("idle");
-  const [isPending, start] = useTransition();
+  const [status, setStatus] = useState<"idle"|"ok"|"dup"|"err">("idle");
+  const [pending, start] = useTransition();
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -122,275 +136,214 @@ function Hero() {
     start(async () => {
       try {
         const r = await joinWaitlist({ email: email.trim().toLowerCase(), source: "hero" });
-        setStatus(r.status === "already_registered" ? "dup" : "success");
+        setStatus(r.status === "already_registered" ? "dup" : "ok");
       } catch { setStatus("err"); }
     });
   }
 
   return (
-    <section className="pt-32 pb-20 px-6" style={{ background: C.cream }}>
-      <div className="mx-auto max-w-[1100px]">
-        {/* Badge */}
-        <div className="mb-8 inline-flex items-center gap-2 rounded-full border px-4 py-2"
-          style={{ borderColor: C.border, background: "white" }}>
-          <span style={{ color: C.accent, fontSize: 13 }}>⚡</span>
-          <span style={{ fontFamily: mono, fontSize: 10, letterSpacing: "0.14em", color: C.muted, textTransform: "uppercase" }}>
-            Now in early access — founding price locked for life
-          </span>
-        </div>
-
-        {/* H1 */}
-        <h1 style={{ fontFamily: serif, fontWeight: 700, fontSize: "clamp(52px,7vw,82px)", lineHeight: 1.04, letterSpacing: "-0.03em", color: C.primary, maxWidth: 820, marginBottom: 28 }}>
-          Ship more.{" "}
-          <AccentItalic>Ops handled.</AccentItalic>
-        </h1>
-
-        {/* Subtext */}
-        <p style={{ fontFamily: sans, fontSize: 19, lineHeight: 1.75, color: C.muted, maxWidth: 580, marginBottom: 40 }}>
-          Rule8 is the operational co-founder for solo builders. AI crews handle your support, billing,
-          and community — so you wake up to{" "}
-          <span style={{ textDecoration: "underline", textDecorationColor: C.accent, textUnderlineOffset: 4 }}>
-            outcomes, not a backlog
-          </span>.
-        </p>
-
-        {/* CTAs */}
-        <div className="flex flex-wrap items-center gap-4 mb-20">
-          <CTAPrimary href="/waitlist">Claim your founding spot →</CTAPrimary>
-          <CTASecondary href="#how-it-works">See a task run end-to-end</CTASecondary>
-        </div>
-
-        {/* Stat bar */}
-        <div className="grid grid-cols-2 gap-px overflow-hidden rounded-2xl border lg:grid-cols-4"
-          style={{ borderColor: C.border }}>
-          {[
-            { num: "3 min", label: "Median response", sub: "24 / 7" },
-            { num: "91%", label: "Resolved without", sub: "escalation" },
-            { num: "$2.92", label: "All-in daily cost", sub: "all crews" },
-            { num: "0", label: "Tickets in your", sub: "inbox" },
-          ].map((s, i) => (
-            <div key={i} className="px-8 py-8" style={{ background: i % 2 === 0 ? "white" : C.cream }}>
-              <div style={{ fontFamily: serif, fontWeight: 700, fontSize: 44, lineHeight: 1, color: C.primary, marginBottom: 10 }}>
-                {s.num}
-              </div>
-              <p style={{ fontFamily: mono, fontSize: 10, textTransform: "uppercase", letterSpacing: "0.12em", color: C.muted, lineHeight: 1.6 }}>
-                {s.label}<br />{s.sub}
-              </p>
-            </div>
-          ))}
-        </div>
-
-        {count > 0 && (
-          <p className="mt-6 text-center" style={{ fontFamily: sans, fontSize: 13, color: C.muted }}>
-            <span style={{ color: C.primary, fontWeight: 600 }}>{count.toLocaleString()}</span> founders already on the list
-          </p>
-        )}
+    <section style={{ background: T.bg, paddingTop: 100 }}>
+      {/* Ticker */}
+      <div className="py-2.5" style={{ borderBottom: `1px solid ${T.border}` }}>
+        <TickerLine text="HANDLE SUPPORT · ISSUE REFUNDS · MODERATE DISCORD · TRIAGE TICKETS · DETECT ANOMALIES · ROUTE ESCALATIONS · LOG EVERY TRACE · PROTECT REVENUE · HANDLE SUPPORT · ISSUE REFUNDS · MODERATE DISCORD · TRIAGE TICKETS" />
       </div>
-    </section>
-  );
-}
 
-/* ── 3. PROBLEM ────────────────────────────────────────────── */
-function Problem() {
-  return (
-    <section id="problem" className="py-28 px-6" style={{ background: C.card }}>
-      <div className="mx-auto max-w-[1100px]">
-        <SectionLabel index="01" text="The Founder Tax" />
-        <Heading size={56}>
-          You&apos;re running two jobs.{" "}
-          <AccentItalic>You only signed up for one.</AccentItalic>
-        </Heading>
-        <Body className="mt-6 mb-16">
-          Building the product and running the business around it — support tickets, billing disputes,
-          community fires. It all demands your attention every day. The operational layer is a full-time
-          job nobody hired for. Rule8 fills that role.
-        </Body>
-
-        <div className="grid gap-5 md:grid-cols-3">
-          {[
-            {
-              icon: "⏱",
-              label: "The hidden hours",
-              desc: "Founders spend 3.2 hours per day on operational work. That&apos;s 22 hours a week not shipping, closing deals, or talking to the customers who matter.",
-            },
-            {
-              icon: "🌙",
-              label: "Always on",
-              desc: "Support tickets don&apos;t respect your timezone. A Discord fire at 3am goes unnoticed until morning. By then the damage is done. Rule8 never clocks out.",
-            },
-            {
-              icon: "☕",
-              label: "Cheaper than coffee",
-              desc: "Three full crews — Finance, Support, Community — operating round the clock for $2.92 per day. Less than your morning flat white. More than any hire you&apos;ve made.",
-            },
-          ].map(({ icon, label, desc }) => (
-            <div key={label} className="rounded-2xl border p-8"
-              style={{ background: C.cream, borderColor: `${C.border}80` }}>
-              <div className="mb-5 flex h-10 w-10 items-center justify-center rounded-xl text-[20px]"
-                style={{ background: `${C.accent}14` }}>
-                {icon}
-              </div>
-              <p style={{ fontFamily: mono, fontSize: 10, textTransform: "uppercase", letterSpacing: "0.14em", color: C.accent, marginBottom: 10 }}>
-                {label}
-              </p>
-              <p style={{ fontFamily: sans, fontSize: 15, lineHeight: 1.7, color: C.muted }}
-                dangerouslySetInnerHTML={{ __html: desc }} />
+      <div className="mx-auto max-w-[1120px] px-6">
+        <div className="grid items-start gap-16 py-24 lg:grid-cols-[1fr_480px]">
+          {/* Left */}
+          <div>
+            <div className="mb-8">
+              <Chip>⚡ Agent OS · Early access</Chip>
             </div>
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-}
 
-/* ── 4. BEFORE / AFTER ─────────────────────────────────────── */
-function BeforeAfter() {
-  const withoutItems = [
-    "Wake up to 30 support tickets, 4 billing disputes, 2 Discord fires",
-    "Context-switching 11× before 11am just clearing the queue",
-    "Customer waited 6 hours for a refund that takes 90 seconds",
-    "Spam wave hits Discord at 3am — nobody sees it until morning",
-    "Still triaging at midnight because the backlog never ends",
-  ];
-  const withItems = [
-    "Trace log: 54 tasks resolved overnight, 4 escalated for your review",
-    "Finance crew issued $49 refund in 2m47s — customer already replied saying thanks",
-    "Discord spam detected at 3:14am, user warned, thread archived automatically",
-    "Morning is for building. Ops is handled.",
-    "4 escalations waiting — every one with full context pre-assembled",
-  ];
+            <h1 style={{ fontFamily: sans, fontWeight: 900, fontSize: "clamp(56px,7.5vw,96px)",
+              lineHeight: 0.96, letterSpacing: "-0.04em", color: T.text, marginBottom: 28 }}>
+              Build more.<br />
+              <Accent>Run less.</Accent>
+            </h1>
 
-  return (
-    <section id="before-after" className="py-28 px-6" style={{ background: C.cream }}>
-      <div className="mx-auto max-w-[1100px]">
-        <SectionLabel index="02" text="Before / After" />
-        <Heading size={52}>
-          Two mornings.{" "}
-          <AccentItalic>One choice.</AccentItalic>
-        </Heading>
-
-        <div className="mt-14 grid gap-6 lg:grid-cols-2">
-          {/* Without */}
-          <div className="relative rounded-2xl border p-8" style={{ background: C.card, borderColor: `${C.border}80` }}>
-            <div className="absolute right-6 top-6"
-              style={{ fontFamily: mono, fontSize: 18, fontWeight: 700, color: C.accent }}>
-              07:14 AM
-            </div>
-            <p style={{ fontFamily: mono, fontSize: 10, textTransform: "uppercase", letterSpacing: "0.14em", color: "#B04040", marginBottom: 20 }}>
-              Without Rule8
+            <p style={{ fontFamily: sans, fontSize: 18, lineHeight: 1.7, color: T.muted,
+              maxWidth: 480, marginBottom: 36 }}>
+              Rule8 is the operational co-founder for solo builders. AI crews handle your support,
+              billing, and community autonomously — so you see{" "}
+              <span style={{ color: T.text, borderBottom: `1px solid ${T.orange}` }}>outcomes, not a backlog</span>.
             </p>
-            <ul className="space-y-3.5">
-              {withoutItems.map((t) => (
-                <li key={t} className="flex items-start gap-3">
-                  <span className="mt-1 flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-white text-[10px] font-bold"
-                    style={{ background: "#C84040" }}>✕</span>
-                  <span style={{ fontFamily: sans, fontSize: 14, lineHeight: 1.6, color: C.muted }}>{t}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
 
-          {/* With */}
-          <div className="relative rounded-2xl border p-8" style={{ background: "white", borderColor: `${C.accent}40` }}>
-            <div className="absolute -top-3.5 left-7 rounded-full px-3 py-1 text-[11px] font-semibold text-white"
-              style={{ background: C.accent, fontFamily: mono, letterSpacing: "0.1em" }}>
-              WITH RULE8
-            </div>
-            <p style={{ fontFamily: mono, fontSize: 10, textTransform: "uppercase", letterSpacing: "0.14em", color: "#2A7A48", marginBottom: 20 }}>
-              Your morning
-            </p>
-            <ul className="space-y-3.5">
-              {withItems.map((t) => (
-                <li key={t} className="flex items-start gap-3">
-                  <span className="mt-1 flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-white text-[10px] font-bold"
-                    style={{ background: "#2A7A48" }}>✓</span>
-                  <span style={{ fontFamily: sans, fontSize: 14, lineHeight: 1.6, color: C.muted }}>{t}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-/* ── 5. HOW IT WORKS ───────────────────────────────────────── */
-function HowItWorks() {
-  const steps = [
-    { n: "01", title: "Signal arrives", body: "A webhook fires from Intercom, Stripe, Discord, or email. Rule8 receives it in under 200ms and normalises it into a standard task — regardless of source." },
-    { n: "02", title: "Executive classifies", body: "The Executive AI reads the task, scores intent with a confidence threshold, and routes it to the right crew. Below threshold it escalates immediately rather than guessing." },
-    { n: "03", title: "Context assembled", body: "Before any specialist acts, Executive pulls user history, product context, refund policies, and escalation rules into a single context packet. Specialists never start from zero." },
-    { n: "04", title: "Specialist executes", body: "The right specialist runs a tool loop — LLM call, tool execution, result ingestion — up to 5 rounds. Every step writes a trace record. Every tool call is real." },
-    { n: "05", title: "Resolved or escalated", body: "Task marked resolved with resolution text, total cost, and latency. Or escalated with full context pre-assembled — what was tried, why it escalated, recommended action. Your decision takes 10 seconds, not 20 minutes." },
-  ];
-
-  return (
-    <section id="how-it-works" className="py-28 px-6" style={{ background: C.card }}>
-      <div className="mx-auto max-w-[1100px]">
-        <SectionLabel index="03" text="How It Works" />
-        <Heading size={52}>
-          One request. Handled end-to-end.{" "}
-          <AccentItalic>Here&apos;s the proof.</AccentItalic>
-        </Heading>
-        <Body className="mt-5 mb-16">
-          Here&apos;s exactly what happens when a billing dispute lands in your Intercom — from webhook to
-          resolved, in under 15 seconds.
-        </Body>
-
-        {/* Steps */}
-        <div className="mb-14 rounded-2xl border overflow-hidden" style={{ borderColor: `${C.border}80` }}>
-          {steps.map((step, i) => (
-            <div key={step.n}>
-              <div className="flex items-start gap-8 px-8 py-7"
-                style={{ background: i % 2 === 0 ? "white" : C.cream }}>
-                <span style={{ fontFamily: serif, fontWeight: 700, fontSize: 28, color: C.accent, minWidth: 40, lineHeight: 1 }}>
-                  {step.n}
-                </span>
+            {/* Email form */}
+            {status === "ok" ? (
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-full text-lg font-bold text-black"
+                  style={{ background: T.green }}>✓</div>
                 <div>
-                  <p style={{ fontFamily: serif, fontWeight: 700, fontSize: 19, color: C.primary, marginBottom: 6 }}>
-                    {step.title}
-                  </p>
-                  <p style={{ fontFamily: sans, fontSize: 15, lineHeight: 1.7, color: C.muted, maxWidth: 680 }}>
-                    {step.body}
-                  </p>
+                  <p style={{ fontFamily: sans, fontSize: 15, fontWeight: 600, color: T.text }}>You&apos;re on the list.</p>
+                  <p style={{ fontFamily: mono, fontSize: 11, color: T.muted }}>We&apos;ll reach out within 24h.</p>
                 </div>
               </div>
-              {i < steps.length - 1 && <div style={{ height: 1, background: C.border }} />}
-            </div>
-          ))}
-        </div>
+            ) : (
+              <form onSubmit={submit} className="flex flex-col gap-3 sm:flex-row">
+                <input type="email" required value={email} onChange={e => setEmail(e.target.value)}
+                  placeholder="your@email.com"
+                  className="flex-1 rounded-lg border px-4 py-3 text-[14px] outline-none transition"
+                  style={{ fontFamily: sans, background: T.surface, borderColor: T.border,
+                    color: T.text, maxWidth: 280 }}
+                  onFocus={e => e.target.style.borderColor = T.orange}
+                  onBlur={e => e.target.style.borderColor = T.border}
+                />
+                <button type="submit" disabled={pending}
+                  className="rounded-lg px-6 py-3 text-[14px] font-semibold text-black transition-opacity hover:opacity-85 disabled:opacity-50"
+                  style={{ background: T.orange, fontFamily: sans }}>
+                  {pending ? "…" : "Claim founding spot →"}
+                </button>
+              </form>
+            )}
+            {status === "dup" && <p className="mt-2" style={{ fontFamily: mono, fontSize: 11, color: T.muted }}>Already on the list.</p>}
 
-        {/* Terminal block */}
-        <div className="rounded-2xl overflow-hidden" style={{ background: "#1A1714" }}>
-          <div className="flex items-center gap-1.5 px-5 py-3.5 border-b" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
-            {["#EF4444","#F59E0B","#22C55E"].map(c => (
-              <div key={c} className="h-2.5 w-2.5 rounded-full" style={{ background: c }} />
-            ))}
-            <span className="ml-3" style={{ fontFamily: mono, fontSize: 11, color: "rgba(255,255,255,0.3)" }}>
-              rule8 trace — task-2847
-            </span>
+            {/* Stats row */}
+            <div className="mt-12 flex flex-wrap gap-8">
+              {[
+                { n: "3 min", l: "median response" },
+                { n: "91%",   l: "auto-resolved" },
+                { n: "$2.92", l: "daily cost, all crews" },
+                { n: count > 0 ? `${count}` : "—", l: "founders waiting" },
+              ].map(({ n, l }) => (
+                <div key={l}>
+                  <p style={{ fontFamily: sans, fontWeight: 800, fontSize: 28,
+                    color: T.text, lineHeight: 1, letterSpacing: "-0.03em" }}>{n}</p>
+                  <p style={{ fontFamily: mono, fontSize: 10, color: T.muted,
+                    textTransform: "uppercase", letterSpacing: "0.1em", marginTop: 4 }}>{l}</p>
+                </div>
+              ))}
+            </div>
           </div>
-          <div className="px-6 py-6 space-y-1.5 overflow-x-auto">
-            {[
-              { t: "00:00.000", tag: "INBOUND  ", col: "rgba(255,255,255,0.4)", msg: "webhook received · intercom · conv_4921" },
-              { t: "00:00.021", tag: "EXECUTIVE", col: "#F59E0B",               msg: "classifying intent · confidence 0.94" },
-              { t: "00:00.048", tag: "ROUTE    ", col: "#60A5FA",               msg: "→ finance_crew · reason: billing dispute detected" },
-              { t: "00:00.054", tag: "CONTEXT  ", col: "rgba(255,255,255,0.4)", msg: "assembling context packet · user history loaded (7 prior tasks)" },
-              { t: "00:00.071", tag: "TOOL     ", col: "#A78BFA",               msg: 'stripe.lookupCustomer(email="sarah@acme.io")' },
-              { t: "00:00.298", tag: "RESULT   ", col: "#34D399",               msg: "charge_9xK2: $49.00 duplicate confirmed ✓" },
-              { t: "00:00.312", tag: "TOOL     ", col: "#A78BFA",               msg: "stripe.issueRefund(charge_9xK2, $49.00)" },
-              { t: "00:00.687", tag: "RESULT   ", col: "#34D399",               msg: 'refund_rf_aB8x created · status: succeeded ✓' },
-              { t: "00:00.694", tag: "TOOL     ", col: "#A78BFA",               msg: 'intercom.reply(conv_4921, "Hi Sarah, confirmed refund…")' },
-              { t: "00:00.891", tag: "RESULT   ", col: "#34D399",               msg: "message_3921 delivered ✓" },
-              { t: "00:00.899", tag: "RESOLVED ", col: "#F97316",               msg: "task-2847 · 3 tool calls · 891ms · $0.18 · cache hit" },
-            ].map(({ t, tag, col, msg }) => (
-              <div key={t} className="flex items-start gap-4 whitespace-nowrap">
-                <span style={{ fontFamily: mono, fontSize: 12, color: "rgba(255,255,255,0.22)", minWidth: 78 }}>{t}</span>
-                <span style={{ fontFamily: mono, fontSize: 12, color: col, minWidth: 72 }}>{tag}</span>
-                <span style={{ fontFamily: mono, fontSize: 12, color: "rgba(255,255,255,0.62)" }}>{msg}</span>
+
+          {/* Right — terminal */}
+          <div className="hidden lg:block">
+            <div className="rounded-xl overflow-hidden border" style={{ borderColor: T.border }}>
+              <div className="flex items-center justify-between px-4 py-3 border-b"
+                style={{ background: T.surface, borderColor: T.border }}>
+                <div className="flex gap-1.5">
+                  {[T.red, "#F59E0B", T.green].map(c=>(
+                    <div key={c} className="h-2.5 w-2.5 rounded-full" style={{ background: c }} />
+                  ))}
+                </div>
+                <span style={{ fontFamily: mono, fontSize: 11, color: T.muted }}>rule8 trace — live</span>
+                <span className="flex items-center gap-1.5"
+                  style={{ fontFamily: mono, fontSize: 10, color: T.green }}>
+                  <span className="h-1.5 w-1.5 rounded-full" style={{ background: T.green }} />
+                  RUNNING
+                </span>
               </div>
-            ))}
+              <div className="px-5 py-5 space-y-2" style={{ background: "#0D0C0B" }}>
+                <div className="mb-4" style={{ fontFamily: mono, fontSize: 12, color: T.muted }}>
+                  $ rule8 run --task task-2847 --source intercom
+                </div>
+                {TRACE_LINES.map(({ t, tag, col, msg }) => (
+                  <div key={t} className="flex items-start gap-3">
+                    <span style={{ fontFamily: mono, fontSize: 11, color: T.faint, minWidth: 72, flexShrink: 0 }}>{t}</span>
+                    <span style={{ fontFamily: mono, fontSize: 11, color: col, minWidth: 68, flexShrink: 0 }}>{tag}</span>
+                    <span style={{ fontFamily: mono, fontSize: 11, color: "rgba(242,237,230,0.55)" }}>{msg}</span>
+                  </div>
+                ))}
+                <div className="mt-4 pt-4 border-t" style={{ borderColor: T.border }}>
+                  <div className="flex items-center gap-3">
+                    <span style={{ fontFamily: mono, fontSize: 11, color: T.muted }}>cost</span>
+                    <span style={{ fontFamily: mono, fontSize: 11, color: T.text }}>$0.18</span>
+                    <span style={{ fontFamily: mono, fontSize: 11, color: T.muted }}>latency</span>
+                    <span style={{ fontFamily: mono, fontSize: 11, color: T.text }}>891ms</span>
+                    <span style={{ fontFamily: mono, fontSize: 11, color: T.green, marginLeft: "auto" }}>● resolved</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <Divider />
+    </section>
+  );
+}
+
+/* ─── 3. PROBLEM ───────────────────────────────────────────── */
+function Problem() {
+  return (
+    <section style={{ background: T.surface }} className="py-28 px-6">
+      <div className="mx-auto max-w-[1120px]">
+        <div className="grid gap-16 lg:grid-cols-2">
+          <div>
+            <Label>01 — The problem</Label>
+            <H2 size={44}>
+              You&apos;re running two jobs.<br />
+              <Accent>You signed up for one.</Accent>
+            </H2>
+            <p className="mt-6" style={{ fontFamily: sans, fontSize: 16, lineHeight: 1.75, color: T.muted, maxWidth: 440 }}>
+              Support tickets, billing disputes, community fires — it all demands your attention
+              every single day. The operational layer is a full-time job nobody hired for.
+              Rule8 fills that role. Permanently.
+            </p>
+
+            <div className="mt-10 grid grid-cols-2 gap-4">
+              {[
+                { n: "3.2h", l: "lost per day to ops", c: T.red },
+                { n: "11×", l: "context switches before noon", c: T.orange },
+                { n: "6h", l: "avg wait for a refund decision", c: "#F59E0B" },
+                { n: "$0", l: "value shipped during ops time", c: T.muted },
+              ].map(({ n, l, c }) => (
+                <div key={l} className="rounded-lg border p-4" style={{ background: T.raised, borderColor: T.border }}>
+                  <p style={{ fontFamily: sans, fontWeight: 800, fontSize: 32,
+                    color: c, lineHeight: 1, letterSpacing: "-0.03em" }}>{n}</p>
+                  <p style={{ fontFamily: mono, fontSize: 10, color: T.muted,
+                    textTransform: "uppercase", letterSpacing: "0.1em", marginTop: 6 }}>{l}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Before / After */}
+          <div className="space-y-3">
+            <div className="rounded-xl border p-6" style={{ background: T.raised, borderColor: T.border }}>
+              <div className="mb-4 flex items-center justify-between">
+                <p style={{ fontFamily: mono, fontSize: 10, textTransform: "uppercase",
+                  letterSpacing: "0.14em", color: T.red }}>Without Rule8</p>
+                <p style={{ fontFamily: mono, fontSize: 18, fontWeight: 700, color: T.orange }}>07:14 AM</p>
+              </div>
+              <ul className="space-y-3">
+                {[
+                  "30 support tickets, 4 billing disputes, 2 Discord fires overnight",
+                  "Context-switching 11× before 11am just clearing the queue",
+                  "Customer waited 6h for a $49 refund. 90 seconds of actual work.",
+                  "Spam wave hit Discord at 3am. Saw it at 8am. Too late.",
+                  "Still triaging at midnight. Again.",
+                ].map(t => (
+                  <li key={t} className="flex items-start gap-3">
+                    <span style={{ color: T.red, fontWeight: 700, marginTop: 1, flexShrink: 0 }}>×</span>
+                    <span style={{ fontFamily: sans, fontSize: 13, lineHeight: 1.6, color: T.muted }}>{t}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            <div className="rounded-xl border p-6" style={{ background: T.raised, borderColor: "rgba(34,197,94,0.2)" }}>
+              <div className="mb-4 flex items-center justify-between">
+                <p style={{ fontFamily: mono, fontSize: 10, textTransform: "uppercase",
+                  letterSpacing: "0.14em", color: T.green }}>With Rule8</p>
+                <span className="rounded-full px-2.5 py-0.5 text-[10px] font-mono font-semibold"
+                  style={{ background: T.greenDim, color: T.green }}>● all crews running</span>
+              </div>
+              <ul className="space-y-3">
+                {[
+                  "54 tasks resolved overnight. 4 escalated with full context assembled.",
+                  "$49 refund issued in 2m47s. Customer already replied saying thanks.",
+                  "Discord spam caught at 3:14am. User warned. Thread archived.",
+                  "Morning is for building. Ops is handled.",
+                  "4 decisions waiting in your queue. Everything else done.",
+                ].map(t => (
+                  <li key={t} className="flex items-start gap-3">
+                    <span style={{ color: T.green, fontWeight: 700, marginTop: 1, flexShrink: 0 }}>✓</span>
+                    <span style={{ fontFamily: sans, fontSize: 13, lineHeight: 1.6, color: T.muted }}>{t}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
           </div>
         </div>
       </div>
@@ -398,319 +351,310 @@ function HowItWorks() {
   );
 }
 
-/* ── 6. CREWS ──────────────────────────────────────────────── */
+/* ─── 4. HOW IT WORKS ──────────────────────────────────────── */
+function HowItWorks() {
+  const steps = [
+    { tag: "INGEST",    title: "Signal arrives",          body: "Webhook fires from Intercom, Stripe, Discord, or any connected tool. Normalised into a standard task in <200ms regardless of source." },
+    { tag: "CLASSIFY",  title: "Executive routes",         body: "The Executive AI reads the task, scores confidence, and routes to the right crew. Below threshold → immediate escalation. No guessing." },
+    { tag: "CONTEXT",   title: "Context packet assembled", body: "User history, product policies, prior interactions, escalation rules — all pulled into one packet before any specialist acts." },
+    { tag: "EXECUTE",   title: "Specialist runs the loop", body: "Tool calls, results, next calls — up to 5 rounds. Every step writes a trace. Every tool call is real. Stripe. Intercom. Discord." },
+    { tag: "RESOLVE",   title: "Resolved or escalated",    body: "Task resolved with full trace, cost, latency. Or escalated with context pre-assembled so your decision takes 10 seconds, not 20 minutes." },
+  ];
+
+  return (
+    <section id="how" className="py-28 px-6" style={{ background: T.bg }}>
+      <div className="mx-auto max-w-[1120px]">
+        <Label>03 — How it works</Label>
+        <H2 size={44}>
+          One task. Handled end-to-end.<br />
+          <Accent>Here&apos;s what actually happens.</Accent>
+        </H2>
+
+        <div className="mt-14 rounded-xl overflow-hidden border" style={{ borderColor: T.border }}>
+          {steps.map(({ tag, title, body }, i) => (
+            <div key={tag}>
+              <div className="grid items-start gap-6 px-8 py-7 lg:grid-cols-[100px_1fr_2fr]"
+                style={{ background: i % 2 === 0 ? T.surface : T.raised }}>
+                <span className="rounded border px-2.5 py-1 self-start"
+                  style={{ fontFamily: mono, fontSize: 9, textTransform: "uppercase",
+                    letterSpacing: "0.14em", color: T.orange, borderColor: "rgba(249,115,22,0.25)",
+                    background: T.orangeDim }}>
+                  {tag}
+                </span>
+                <p style={{ fontFamily: sans, fontWeight: 700, fontSize: 17, color: T.text, lineHeight: 1.3 }}>
+                  {title}
+                </p>
+                <p style={{ fontFamily: sans, fontSize: 14, lineHeight: 1.7, color: T.muted }}>
+                  {body}
+                </p>
+              </div>
+              {i < steps.length - 1 && <Divider />}
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/* ─── 5. CREWS ─────────────────────────────────────────────── */
 function Crews() {
   const verticals = [
-    {
-      label: "SaaS / B2B",
-      crews: ["Customer Operations", "Billing & Subscriptions", "Product Feedback"],
-      specialists: ["Support", "Payment", "Engineering Signal"],
-      color: "#4D7CFF",
-    },
-    {
-      label: "E-commerce / DTC",
-      crews: ["Customer Support", "Returns & Refunds", "Community"],
-      specialists: ["Support", "Payment", "Community"],
-      color: "#14B8A6",
-    },
-    {
-      label: "Creator Economy",
-      crews: ["Audience Operations", "Membership & Billing", "Community"],
-      specialists: ["Support", "Payment", "Email", "Community"],
-      color: "#8B5CF6",
-    },
-    {
-      label: "Agency",
-      crews: ["Client Operations", "Project Billing", "New Business Signals"],
-      specialists: ["Support", "Payment", "Sales Signal"],
-      color: "#F59E0B",
-    },
-    {
-      label: "Marketplace",
-      crews: ["Buyer Support", "Seller Support", "Trust & Safety"],
-      specialists: ["Support", "Payment", "Community"],
-      color: "#EC4899",
-    },
-    {
-      label: "Developer Tool",
-      crews: ["Technical Support", "Billing", "Community & Docs"],
-      specialists: ["Engineering Signal", "Support", "Payment"],
-      color: "#10B981",
-    },
+    { label: "SaaS / B2B",       crews: ["Customer Operations","Billing & Subscriptions","Product Feedback"],  color: "#60A5FA" },
+    { label: "E-commerce / DTC", crews: ["Customer Support","Returns & Refunds","Community"],                  color: "#34D399" },
+    { label: "Creator Economy",  crews: ["Audience Operations","Membership & Billing","Community"],             color: "#A78BFA" },
+    { label: "Agency",           crews: ["Client Operations","Project Billing","New Business Signals"],         color: "#F59E0B" },
+    { label: "Marketplace",      crews: ["Buyer Support","Seller Support","Trust & Safety"],                    color: "#F472B6" },
+    { label: "Developer Tool",   crews: ["Technical Support","Billing","Community & Docs"],                     color: "#2DD4BF" },
+    { label: "Custom",           crews: ["You define them","Executive suggests","Rename anything"],             color: T.orange },
   ];
 
   const specialists = [
-    { icon: "💳", label: "Payment Specialist", via: "Stripe · Paddle · Lemon Squeezy", desc: "Charge lookup, refunds, subscription status, failure recovery" },
-    { icon: "🎧", label: "Support Specialist",  via: "Intercom · Crisp · Help Scout",    desc: "Read tickets, post replies, resolve conversations, triage by priority" },
-    { icon: "🌐", label: "Community Specialist",via: "Discord · Slack",                  desc: "Channel monitoring, moderation, feature extraction, sentiment" },
-    { icon: "📧", label: "Email Specialist",    via: "Gmail · Postmark · Resend",         desc: "Inbound thread parsing, quote stripping, reply drafting" },
-    { icon: "📚", label: "Knowledge Specialist",via: "Notion · Confluence",              desc: "Pull product docs into agent context, answer from structured KB" },
-    { icon: "🔧", label: "Engineering Signal",  via: "GitHub · Linear",                  desc: "Correlate support tickets with open issues, surface product patterns" },
-    { icon: "📈", label: "Sales Signal",        via: "HubSpot · Pipedrive",              desc: "Flag upgrade candidates, identify expansion revenue from ops data" },
-    { icon: "⚡", label: "Custom Specialist",   via: "Any webhook",                      desc: "Any tool you use — defined by you, built by Executive in conversation" },
+    { icon: "💳", name: "Payment",     via: "Stripe · Paddle · Lemon Squeezy" },
+    { icon: "🎧", name: "Support",     via: "Intercom · Crisp · Help Scout · Zendesk" },
+    { icon: "🌐", name: "Community",   via: "Discord · Slack" },
+    { icon: "📧", name: "Email",       via: "Gmail · Postmark · Resend" },
+    { icon: "📚", name: "Knowledge",   via: "Notion · Confluence" },
+    { icon: "🔧", name: "Engineering", via: "GitHub · Linear" },
+    { icon: "📈", name: "Sales Signal",via: "HubSpot · Pipedrive" },
+    { icon: "⚡", name: "Custom",      via: "Any webhook you connect" },
   ];
 
   return (
-    <section id="crews" className="py-28 px-6" style={{ background: C.cream }}>
-      <div className="mx-auto max-w-[1100px]">
-        <SectionLabel index="04" text="Crews" />
-        <Heading size={52}>
-          Your crews. Named after{" "}
-          <AccentItalic>your business, not ours.</AccentItalic>
-        </Heading>
-        <Body className="mt-5 mb-6">
-          Crews are surface-area containers. You name them. Executive AI activates the right specialists
-          inside them when a task arrives — without you defining it in advance. A real-estate founder
-          doesn&apos;t have a &ldquo;Finance Crew&rdquo;. They have &ldquo;Closing Coordinator&rdquo;.
-          Rule8 speaks your language.
-        </Body>
+    <section id="crews" className="py-28 px-6" style={{ background: T.surface }}>
+      <div className="mx-auto max-w-[1120px]">
+        <Label>04 — Crews</Label>
+        <H2 size={44}>
+          Your crews. Your language.<br />
+          <Accent>Not ours.</Accent>
+        </H2>
+        <p className="mt-5 mb-14" style={{ fontFamily: sans, fontSize: 16, lineHeight: 1.7, color: T.muted, maxWidth: 580 }}>
+          Crews are surface-area containers named after your business. Executive activates the right
+          specialists inside them automatically. A real-estate founder doesn&apos;t have a &ldquo;Finance
+          Crew&rdquo; — they have &ldquo;Closing Coordinator&rdquo;.
+        </p>
 
-        {/* Architecture callout */}
-        <div className="mb-14 grid gap-4 lg:grid-cols-3">
+        {/* Architecture */}
+        <div className="mb-12 grid gap-3 lg:grid-cols-3">
           {[
-            { label: "Executive", role: "The harness. Always present. Routes every signal, assembles context, enforces confidence thresholds, escalates, surfaces patterns.", badge: "Rule8 — not configurable", color: C.accent },
-            { label: "Generalist Crews", role: "Surface-area containers. Named by the founder. Owns a domain of work. Does not prescribe which specialist handles it — that&apos;s Executive&apos;s job.", badge: "Founder-defined", color: "#4D7CFF" },
-            { label: "Specialist Agents", role: "Expertise units activated on demand by Executive. Can run in parallel for complex tasks. Invisible to the customer. One coherent response always goes out.", badge: "Rule8 defaults + custom", color: "#10B981" },
-          ].map(({ label, role, badge, color }) => (
-            <div key={label} className="rounded-2xl border p-6"
-              style={{ background: C.card, borderColor: `${C.border}80` }}>
-              <div className="mb-3 inline-flex items-center gap-2 rounded-full border px-3 py-1"
-                style={{ background: "white", borderColor: C.border }}>
-                <span className="h-1.5 w-1.5 rounded-full" style={{ background: color }} />
-                <span style={{ fontFamily: mono, fontSize: 9, textTransform: "uppercase", letterSpacing: "0.12em", color: C.muted }}>{badge}</span>
+            { label: "Executive",         badge: "Rule8 · always present",   color: T.orange,  body: "Routes every signal, assembles context, enforces confidence, surfaces patterns. Not configurable — it's the harness." },
+            { label: "Generalist Crews",  badge: "Founder-defined",           color: "#60A5FA", body: "Surface-area containers. You name them. They own a domain. Executive decides which specialist runs inside them." },
+            { label: "Specialist Agents", badge: "On-demand · invisible",     color: T.green,   body: "Activated by Executive based on task requirements. Can run in parallel. Customer sees one coherent response." },
+          ].map(({ label, badge, color, body }) => (
+            <div key={label} className="rounded-xl border p-6" style={{ background: T.raised, borderColor: T.border }}>
+              <div className="mb-3 flex items-center gap-2">
+                <span className="h-2 w-2 rounded-full" style={{ background: color }} />
+                <span style={{ fontFamily: mono, fontSize: 9, textTransform: "uppercase",
+                  letterSpacing: "0.14em", color: T.muted }}>{badge}</span>
               </div>
-              <p style={{ fontFamily: serif, fontWeight: 700, fontSize: 18, color: C.primary, marginBottom: 8 }}>{label}</p>
-              <p style={{ fontFamily: sans, fontSize: 13, lineHeight: 1.65, color: C.muted }}
-                dangerouslySetInnerHTML={{ __html: role }} />
+              <p style={{ fontFamily: sans, fontWeight: 700, fontSize: 16, color: T.text, marginBottom: 8 }}>{label}</p>
+              <p style={{ fontFamily: sans, fontSize: 13, lineHeight: 1.65, color: T.muted }}>{body}</p>
             </div>
           ))}
         </div>
 
         {/* Vertical examples */}
-        <p style={{ fontFamily: mono, fontSize: 10, textTransform: "uppercase", letterSpacing: "0.14em", color: C.muted, marginBottom: 16 }}>
-          Example crew configurations — shaped by your vertical
+        <p className="mb-4" style={{ fontFamily: mono, fontSize: 10, textTransform: "uppercase",
+          letterSpacing: "0.14em", color: T.muted }}>
+          Crew configurations — by vertical
         </p>
-        <div className="mb-14 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {verticals.map(({ label, crews, specialists: specs, color }) => (
-            <div key={label} className="rounded-2xl border p-5"
-              style={{ background: "white", borderColor: C.border }}>
-              <div className="mb-4 flex items-center gap-2">
-                <span className="h-2 w-2 rounded-full" style={{ background: color }} />
-                <span style={{ fontFamily: mono, fontSize: 10, textTransform: "uppercase", letterSpacing: "0.12em", color: C.muted }}>{label}</span>
+        <div className="mb-12 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+          {verticals.map(({ label, crews, color }) => (
+            <div key={label} className="rounded-lg border p-4" style={{ background: T.raised, borderColor: T.border }}>
+              <div className="mb-3 flex items-center gap-2">
+                <span className="h-1.5 w-1.5 rounded-full" style={{ background: color }} />
+                <span style={{ fontFamily: mono, fontSize: 9, textTransform: "uppercase",
+                  letterSpacing: "0.1em", color: T.muted }}>{label}</span>
               </div>
-              <div className="mb-4 space-y-1.5">
-                {crews.map((c) => (
-                  <div key={c} className="flex items-center gap-2.5 rounded-lg border px-3 py-2"
-                    style={{ borderColor: `${color}25`, background: `${color}06` }}>
-                    <span style={{ fontFamily: sans, fontSize: 12, color: C.primary, fontWeight: 500 }}>{c}</span>
-                  </div>
+              <ul className="space-y-1.5">
+                {crews.map(c => (
+                  <li key={c} style={{ fontFamily: sans, fontSize: 12, color: T.text, lineHeight: 1.4 }}>{c}</li>
                 ))}
-              </div>
-              <div className="flex flex-wrap gap-1.5">
-                {specs.map((s) => (
-                  <span key={s} className="rounded-full border px-2.5 py-1"
-                    style={{ fontFamily: mono, fontSize: 9, textTransform: "uppercase", letterSpacing: "0.1em", color: C.muted, borderColor: C.border, background: C.cream }}>
-                    {s}
-                  </span>
-                ))}
-              </div>
+              </ul>
             </div>
           ))}
         </div>
 
         {/* Specialist pool */}
-        <div className="rounded-2xl border overflow-hidden" style={{ borderColor: `${C.border}80` }}>
-          <div className="border-b px-8 py-5" style={{ background: C.card, borderColor: `${C.border}80` }}>
-            <p style={{ fontFamily: serif, fontWeight: 700, fontSize: 22, color: C.primary }}>
-              The specialist pool — unlocked by your integrations
-            </p>
-            <p style={{ fontFamily: sans, fontSize: 14, color: C.muted, marginTop: 4 }}>
-              Executive only activates specialists that have the tools to do the job. Connect Stripe → Payment Specialist activates. No guessing.
-            </p>
-          </div>
-          <div className="grid gap-px sm:grid-cols-2" style={{ background: C.border }}>
-            {specialists.map(({ icon, label, via, desc }, i) => (
-              <div key={label} className="flex items-start gap-4 px-6 py-5"
-                style={{ background: i % 2 === 0 ? "white" : C.cream }}>
-                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[18px]"
-                  style={{ background: `${C.accent}10` }}>
-                  {icon}
-                </span>
-                <div>
-                  <p style={{ fontFamily: sans, fontSize: 14, fontWeight: 600, color: C.primary, marginBottom: 2 }}>{label}</p>
-                  <p style={{ fontFamily: mono, fontSize: 9, textTransform: "uppercase", letterSpacing: "0.1em", color: C.accent, marginBottom: 4 }}>via {via}</p>
-                  <p style={{ fontFamily: sans, fontSize: 12, lineHeight: 1.6, color: C.muted }}>{desc}</p>
-                </div>
+        <p className="mb-4" style={{ fontFamily: mono, fontSize: 10, textTransform: "uppercase",
+          letterSpacing: "0.14em", color: T.muted }}>
+          Specialist pool — unlocked by your integrations
+        </p>
+        <div className="grid gap-px overflow-hidden rounded-xl border sm:grid-cols-2 lg:grid-cols-4"
+          style={{ borderColor: T.border, background: T.border }}>
+          {specialists.map(({ icon, name, via }) => (
+            <div key={name} className="flex items-start gap-3 px-5 py-4"
+              style={{ background: T.raised }}>
+              <span className="text-[18px] mt-0.5">{icon}</span>
+              <div>
+                <p style={{ fontFamily: sans, fontWeight: 600, fontSize: 13, color: T.text }}>{name}</p>
+                <p style={{ fontFamily: mono, fontSize: 9, color: T.muted,
+                  textTransform: "uppercase", letterSpacing: "0.08em", marginTop: 3 }}>{via}</p>
               </div>
-            ))}
-          </div>
+            </div>
+          ))}
         </div>
       </div>
     </section>
   );
 }
 
-/* ── 7. INTEGRATIONS ───────────────────────────────────────── */
+/* ─── 6. INTEGRATIONS ──────────────────────────────────────── */
 function Integrations() {
-  const integrations = [
-    "Stripe","Intercom","Discord","Slack",
-    "Linear","Notion","Help Scout","Zendesk",
-    "PostHog","Resend","Twilio","GitHub",
+  const all = [
+    ["Stripe","Billing"],["Intercom","Support"],["Discord","Community"],["Slack","Community"],
+    ["Linear","Engineering"],["Notion","Knowledge"],["Help Scout","Support"],["Zendesk","Support"],
+    ["PostHog","Analytics"],["Resend","Email"],["Twilio","SMS"],["GitHub","Engineering"],
   ];
 
   return (
-    <section id="integrations" className="py-28 px-6" style={{ background: C.card }}>
-      <div className="mx-auto max-w-[1100px]">
-        <SectionLabel index="05" text="Integrations" />
-        <Heading size={52}>
-          Your tools stay.{" "}
-          <AccentItalic>Rule8 orchestrates on top.</AccentItalic>
-        </Heading>
-        <Body className="mt-5 mb-16">
-          One-click connections. Rule8 starts listening the moment you connect — no custom code, no
-          rebuilding your stack. Every integration unlocks a new specialist for your crews.
-        </Body>
+    <section id="integrations" className="py-28 px-6" style={{ background: T.bg }}>
+      <div className="mx-auto max-w-[1120px]">
+        <Label>05 — Integrations</Label>
+        <H2 size={44}>
+          Your stack stays.<br />
+          <Accent>Rule8 orchestrates on top.</Accent>
+        </H2>
+        <p className="mt-5 mb-14" style={{ fontFamily: sans, fontSize: 16, lineHeight: 1.7, color: T.muted, maxWidth: 480 }}>
+          No rebuilding your stack. Connect once. Rule8 listens, acts, and replies on your existing
+          surfaces. Every integration unlocks a new specialist.
+        </p>
 
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-          {integrations.map((name) => (
-            <div key={name} className="flex items-center justify-between rounded-xl border px-5 py-4"
-              style={{ background: "white", borderColor: C.border }}>
-              <span style={{ fontFamily: sans, fontSize: 14, fontWeight: 500, color: C.primary }}>{name}</span>
-              <span className="flex items-center gap-1.5"
-                style={{ fontFamily: mono, fontSize: 9, textTransform: "uppercase", letterSpacing: "0.1em", color: C.accent }}>
-                <span className="h-1.5 w-1.5 rounded-full" style={{ background: C.accent }} />
-                LIVE
-              </span>
+        <div className="grid gap-1 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4">
+          {all.map(([name, cat]) => (
+            <div key={name} className="flex items-center justify-between rounded-lg border px-4 py-3.5 transition"
+              style={{ background: T.surface, borderColor: T.border }}
+              onMouseEnter={e => (e.currentTarget.style.borderColor = T.borderHover)}
+              onMouseLeave={e => (e.currentTarget.style.borderColor = T.border)}>
+              <span style={{ fontFamily: sans, fontSize: 13, fontWeight: 500, color: T.text }}>{name}</span>
+              <div className="flex items-center gap-1.5">
+                <span className="h-1.5 w-1.5 rounded-full" style={{ background: T.green }} />
+                <span style={{ fontFamily: mono, fontSize: 9, color: T.muted,
+                  textTransform: "uppercase", letterSpacing: "0.08em" }}>{cat}</span>
+              </div>
             </div>
           ))}
         </div>
 
-        <p className="mt-8 text-center" style={{ fontFamily: sans, fontSize: 13, color: C.muted }}>
-          More integrations shipping every sprint.{" "}
-          <Link href="/waitlist" className="underline underline-offset-4 transition-opacity hover:opacity-70"
-            style={{ color: C.accent }}>
-            Request yours →
+        <div className="mt-6 flex items-center justify-center gap-2">
+          <span style={{ fontFamily: mono, fontSize: 11, color: T.muted }}>More shipping every sprint —</span>
+          <Link href="/waitlist" className="transition-opacity hover:opacity-60"
+            style={{ fontFamily: mono, fontSize: 11, color: T.orange, textDecoration: "underline", textUnderlineOffset: 3 }}>
+            request yours →
           </Link>
-        </p>
+        </div>
       </div>
     </section>
   );
 }
 
-/* ── 8. FINAL CTA ──────────────────────────────────────────── */
+/* ─── 7. FINAL CTA ─────────────────────────────────────────── */
 function FinalCTA() {
   const joinWaitlist = useMutation(api.waitlist.joinWaitlist);
   const [email, setEmail] = useState("");
-  const [status, setStatus] = useState<"idle"|"success"|"dup"|"err">("idle");
-  const [isPending, start] = useTransition();
+  const [status, setStatus] = useState<"idle"|"ok"|"dup"|"err">("idle");
+  const [pending, start] = useTransition();
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
     if (!email.trim()) return;
     start(async () => {
       try {
-        const r = await joinWaitlist({ email: email.trim().toLowerCase(), source: "final_cta" });
-        setStatus(r.status === "already_registered" ? "dup" : "success");
+        const r = await joinWaitlist({ email: email.trim().toLowerCase(), source: "cta" });
+        setStatus(r.status === "already_registered" ? "dup" : "ok");
       } catch { setStatus("err"); }
     });
   }
 
   return (
-    <section id="final-cta" className="py-32 px-6" style={{ background: C.cream }}>
-      <div className="mx-auto max-w-[1100px]">
-        <SectionLabel index="08" text="Final Call" />
-        <Heading size={58}>
-          Your ops team is ready.{" "}
-          <AccentItalic>Are you?</AccentItalic>
-        </Heading>
-        <Body className="mt-6 mb-10">
-          Early access founders get a 1-on-1 onboarding call, crew configuration with us, and pricing
-          locked in for life. The <em style={{ fontStyle: "italic" }}>aha moment</em> is the first task
-          that completes without you. Most founders see it within 15 minutes of going live.
-        </Body>
+    <section style={{ background: T.surface }} className="py-32 px-6">
+      <div className="mx-auto max-w-[1120px]">
+        <div className="rounded-2xl border p-16 text-center" style={{ background: T.raised, borderColor: T.border }}>
+          <Label>08 — Final call</Label>
+          <h2 style={{ fontFamily: sans, fontWeight: 900, fontSize: "clamp(40px,5vw,68px)",
+            lineHeight: 1.04, letterSpacing: "-0.04em", color: T.text, marginBottom: 20 }}>
+            Your ops team is ready.<br />
+            <Accent>Are you?</Accent>
+          </h2>
+          <p style={{ fontFamily: sans, fontSize: 17, lineHeight: 1.7, color: T.muted,
+            maxWidth: 520, margin: "0 auto 40px" }}>
+            Early access founders get a 1-on-1 onboarding call, crew configuration with us,
+            and pricing locked for life. The{" "}
+            <em>aha moment</em> is the first task that completes without you.
+          </p>
 
-        {status === "success" ? (
-          <div className="flex flex-col gap-2">
-            <div className="flex h-12 w-12 items-center justify-center rounded-full text-white text-xl font-bold"
-              style={{ background: "#2A7A48" }}>✓</div>
-            <p style={{ fontFamily: serif, fontWeight: 700, fontSize: 22, color: C.primary }}>You&apos;re on the list.</p>
-            <p style={{ fontFamily: sans, fontSize: 15, color: C.muted }}>We&apos;ll reach out within 24 hours.</p>
-          </div>
-        ) : (
-          <form onSubmit={submit} className="flex flex-col gap-4 sm:flex-row sm:items-center">
-            <input
-              type="email"
-              required
-              value={email}
-              onChange={e => setEmail(e.target.value)}
-              placeholder="your@email.com"
-              className="h-13 rounded-xl border px-5 text-[15px] outline-none transition focus:ring-2"
-              style={{
-                fontFamily: sans,
-                width: 300,
-                height: 52,
-                borderColor: C.border,
-                background: "white",
-                color: C.primary,
-              }}
-            />
-            <button type="submit" disabled={isPending}
-              className="inline-flex h-[52px] items-center gap-2 rounded-full px-7 font-semibold text-white transition-opacity hover:opacity-80 disabled:opacity-50"
-              style={{ background: C.dark, fontFamily: sans, fontSize: 15 }}>
-              {isPending ? "Submitting…" : "Request access →"}
-            </button>
-          </form>
-        )}
+          {status === "ok" ? (
+            <div className="flex flex-col items-center gap-3">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full text-xl font-black text-black"
+                style={{ background: T.green }}>✓</div>
+              <p style={{ fontFamily: sans, fontWeight: 700, fontSize: 18, color: T.text }}>You&apos;re on the list.</p>
+              <p style={{ fontFamily: mono, fontSize: 11, color: T.muted }}>We&apos;ll reach out within 24 hours.</p>
+            </div>
+          ) : (
+            <form onSubmit={submit} className="flex flex-col items-center gap-3 sm:flex-row sm:justify-center">
+              <input type="email" required value={email} onChange={e => setEmail(e.target.value)}
+                placeholder="your@email.com"
+                className="h-12 rounded-lg border px-5 text-[14px] outline-none"
+                style={{ fontFamily: sans, width: 280, background: T.surface, borderColor: T.border, color: T.text }}
+                onFocus={e => e.target.style.borderColor = T.orange}
+                onBlur={e => e.target.style.borderColor = T.border}
+              />
+              <button type="submit" disabled={pending}
+                className="h-12 rounded-lg px-7 text-[14px] font-semibold text-black transition-opacity hover:opacity-85 disabled:opacity-50"
+                style={{ background: T.orange, fontFamily: sans }}>
+                {pending ? "…" : "Request access →"}
+              </button>
+            </form>
+          )}
+          {status === "dup" && <p className="mt-3" style={{ fontFamily: mono, fontSize: 11, color: T.muted }}>Already on the list.</p>}
 
-        {status === "dup" && <p className="mt-3 text-[13px]" style={{ fontFamily: sans, color: C.muted }}>You&apos;re already on the list — we&apos;ll reach out soon.</p>}
-        {status === "err" && <p className="mt-3 text-[13px]" style={{ fontFamily: sans, color: "#C84040" }}>Something went wrong. Try again.</p>}
-
-        <p className="mt-8" style={{ fontFamily: mono, fontSize: 10, letterSpacing: "0.14em", textTransform: "uppercase", color: C.muted }}>
-          Limited founding spots · No credit card · Reply within 24h
-        </p>
+          <p className="mt-8" style={{ fontFamily: mono, fontSize: 10, letterSpacing: "0.14em",
+            textTransform: "uppercase", color: T.faint }}>
+            Limited founding spots · No credit card · Reply within 24h
+          </p>
+        </div>
       </div>
     </section>
   );
 }
 
-/* ── 9. FOOTER ─────────────────────────────────────────────── */
+/* ─── 8. FOOTER ────────────────────────────────────────────── */
 function Footer() {
   return (
-    <footer className="px-6 py-10" style={{ background: C.cream, borderTop: `1px solid ${C.border}` }}>
-      <div className="mx-auto flex max-w-[1100px] flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
-        {/* Brand */}
+    <footer className="px-6 py-8" style={{ background: T.bg, borderTop: `1px solid ${T.border}` }}>
+      <div className="mx-auto flex max-w-[1120px] flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-2.5">
-          <span className="flex h-6 w-6 items-center justify-center rounded-full text-[11px] font-bold text-white"
-            style={{ background: C.accent }}>8</span>
-          <span style={{ fontFamily: serif, fontWeight: 700, fontSize: 16, color: C.primary }}>Rule8</span>
-          <span style={{ fontFamily: mono, fontSize: 9, textTransform: "uppercase", letterSpacing: "0.14em", color: C.muted, marginLeft: 4 }}>
-            Operational co-founder
-          </span>
+          <div className="flex h-6 w-6 items-center justify-center rounded text-[11px] font-black text-black"
+            style={{ background: T.orange }}>8</div>
+          <span style={{ fontFamily: sans, fontWeight: 700, fontSize: 15, color: T.text }}>Rule8</span>
+          <span style={{ fontFamily: mono, fontSize: 9, textTransform: "uppercase",
+            letterSpacing: "0.14em", color: T.muted, marginLeft: 4 }}>Agent OS</span>
         </div>
-
-        {/* Nav */}
-        <div className="flex flex-wrap items-center gap-6">
-          {[["#how-it-works","How it works"],["#crews","Crews"],["#pricing","Pricing"],["/waitlist","Waitlist"],["/sign-in","Sign in"]].map(([href,label])=>(
-            <a key={href} href={href} className="transition-opacity hover:opacity-60"
-              style={{ fontFamily: sans, fontSize: 13, color: C.muted }}>{label}</a>
+        <div className="flex flex-wrap items-center gap-5">
+          {[["#how","How it works"],["#crews","Crews"],["#integrations","Integrations"],["/waitlist","Waitlist"],["/sign-in","Sign in"]].map(([href,l])=>(
+            <a key={href} href={href} className="transition-opacity hover:opacity-50"
+              style={{ fontFamily: sans, fontSize: 12, color: T.muted }}>{l}</a>
           ))}
         </div>
-
-        {/* Copy */}
-        <p style={{ fontFamily: sans, fontSize: 12, color: `${C.muted}99` }}>© 2026 Rule8</p>
+        <p style={{ fontFamily: mono, fontSize: 11, color: T.faint }}>© 2026 Rule8</p>
       </div>
     </footer>
   );
 }
 
-/* ── PAGE ──────────────────────────────────────────────────── */
+/* ─── PAGE ─────────────────────────────────────────────────── */
 export function LandingPage() {
   return (
-    <div style={{ background: C.cream, color: C.primary }}>
-      <Navbar />
+    <div style={{ background: T.bg, color: T.text }}>
+      <style>{`
+        @keyframes ticker {
+          from { transform: translateX(0); }
+          to   { transform: translateX(-33.333%); }
+        }
+      `}</style>
+      <Nav />
       <Hero />
       <Problem />
-      <BeforeAfter />
       <HowItWorks />
       <Crews />
       <Integrations />
